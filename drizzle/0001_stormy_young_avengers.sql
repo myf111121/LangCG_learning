@@ -1,0 +1,1 @@
+ALTER TABLE `learning_records` ADD `code` text DEFAULT '' NOT NULL;

@@ -8,6 +8,13 @@
       "when": 1791305101754,
       "tag": "0000_chief_katie_power",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1791308600487,
+      "tag": "0001_stormy_young_avengers",
+      "breakpoints": true
     }
   ]
 }

@@ -7,5 +7,6 @@ export const learningRecords=sqliteTable('learning_records',{
  itemId:text('item_id').notNull(),
  completed:integer('completed',{mode:'boolean'}).notNull().default(false),
  note:text('note').notNull().default(''),
+ code:text('code').notNull().default(''),
  updatedAt:text('updated_at').notNull(),
 },t=>[primaryKey({columns:[t.userId,t.itemId]})]);
