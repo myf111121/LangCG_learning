@@ -1,3 +1,5 @@
+import { challengeContexts, contextualizeCode, type ChallengeContext } from './challenge-scenarios.ts';
+
 export type CodeTest = { name: string; code: string };
 export type CodeChallenge = {
   title: string;
@@ -5,13 +7,14 @@ export type CodeChallenge = {
   requirements: string[];
   starter: string;
   tests: CodeTest[];
+  context: ChallengeContext;
 };
 
 const test = (name: string, code: string): CodeTest => ({ name, code });
 const starter = (signature: string, description: string, imports = '') =>
   `${imports}${imports ? '\n\n' : ''}${signature}\n    """${description}"""\n    # 在这里实现你的代码\n    raise NotImplementedError("请完成函数")\n`;
 
-export const codeChallenges: Record<string, CodeChallenge> = {
+const componentChallenges: Record<string, Omit<CodeChallenge, 'context'>> = {
   'w1-1': {
     title: '执行一次模型—工具循环',
     scenario: '知识库助手收到预先生成的模型动作。实现 run_agent(actions, tools)，执行工具调用，记录 trace，并在模型给出 final 时结束。actions 是动作字典列表，tools 是工具名到函数的映射。',
@@ -278,3 +281,16 @@ export const codeChallenges: Record<string, CodeChallenge> = {
     ],
   },
 };
+
+export const codeChallenges: Record<string, CodeChallenge> = Object.fromEntries(
+  Object.entries(componentChallenges).map(([id, challenge]) => {
+    const context = challengeContexts[id];
+    return [id, {
+      ...challenge,
+      context,
+      starter: contextualizeCode(context, challenge.starter),
+      tests: [...challenge.tests, test('完整业务场景：上下游组件协作得到预期结果',
+        `expect_equal(run_scenario(), json.loads(${JSON.stringify(JSON.stringify(context.expected))}))`)],
+    }];
+  }),
+);

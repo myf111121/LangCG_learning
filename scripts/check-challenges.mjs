@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { codeChallenges } from '../app/code-challenges.ts';
-import { buildGradingScript } from '../app/python-grader.ts';
+import { contextualizeCode } from '../app/challenge-scenarios.ts';
+import { buildGradingScript, buildScenarioScript } from '../app/python-grader.ts';
 
 // Reference implementations are verification fixtures, never imported by the UI.
 const solutions = {
@@ -196,25 +197,36 @@ def build_release_report(rows, checks):
 };
 
 const python = process.env.CHALLENGE_PYTHON || 'python';
-function grade(code, tests) {
-  const script = buildGradingScript(code, tests) + '\nprint(_grading_result)\n';
+function execute(script) {
+  script += '\nprint(_grading_result)\n';
   const run = spawnSync(python, ['-c', script], { encoding: 'utf8', timeout: 10000, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
   assert.equal(run.status, 0, run.stderr || String(run.error));
   return JSON.parse(run.stdout);
 }
+const grade = (code, tests) => execute(buildGradingScript(code, tests));
 
 const lessonIds = [...readFileSync(new URL('../app/curriculum.ts', import.meta.url), 'utf8').matchAll(/L\('(w\d-\d)'/g)].map(match => match[1]);
 assert.equal(lessonIds.length, 24);
 assert.deepEqual(Object.keys(codeChallenges), lessonIds);
 let count = 0;
 for (const [id, challenge] of Object.entries(codeChallenges)) {
-  const correct = grade(solutions[id], challenge.tests);
+  const completeProgram = contextualizeCode(challenge.context, solutions[id]);
+  assert.equal(contextualizeCode(challenge.context, completeProgram), completeProgram, `${id}: legacy code wrapped twice`);
+  const correct = grade(completeProgram, challenge.tests);
   assert.equal(correct.error, null, id);
   assert.ok(correct.tests.every(test => test.passed), `${id}: ${JSON.stringify(correct.tests.filter(test => !test.passed))}`);
   const unfinished = grade(challenge.starter, challenge.tests);
   assert.ok(unfinished.tests.every(test => !test.passed), `${id}: starter incorrectly accepted`);
-  const wrong = grade(solutions[id].replace(/return /g, 'return None # '), challenge.tests);
+  const wrong = grade(contextualizeCode(challenge.context, solutions[id].replace(/return /g, 'return None # ')), challenge.tests);
   assert.ok(wrong.error || wrong.tests.some(test => !test.passed), `${id}: incorrect implementation accepted`);
+  const demonstration = execute(buildScenarioScript(completeProgram));
+  assert.equal(demonstration.error, null, `${id}: ${demonstration.error}`);
+  assert.deepEqual(JSON.parse(demonstration.output), challenge.context.expected, `${id}: scenario output`);
+  const unfinishedDemo = execute(buildScenarioScript(challenge.starter));
+  assert.ok(unfinishedDemo.error.includes('NotImplementedError'), `${id}: unfinished scenario succeeded`);
+  const brokenIntegration = grade(completeProgram + '\ndef run_scenario():\n    return {}\n', challenge.tests);
+  assert.ok(brokenIntegration.tests.slice(0, -1).every(test => test.passed), `${id}: component tests unexpectedly failed`);
+  assert.equal(brokenIntegration.tests.at(-1).passed, false, `${id}: broken integration accepted`);
   count += challenge.tests.length;
 }
 const syntax = grade('def broken(:', codeChallenges['w1-1'].tests);
@@ -224,4 +236,8 @@ const output = grade('print("x" * 10000)', [{ name: 'capture', code: 'expect_equ
 assert.equal(output.output.length, 4000);
 const exit = grade('raise SystemExit(0)', [{ name: 'exit', code: 'expect_equal(1, 1)' }]);
 assert.equal(exit.tests[0].passed, false);
-console.log(`Verified ${lessonIds.length} challenges / ${count} acceptance cases; unfinished and incorrect code rejected; syntax errors and output limits checked.`);
+const sceneOutput = execute(buildScenarioScript('print("x" * 10000)'));
+assert.equal(sceneOutput.output.length, 4000);
+const sceneExit = execute(buildScenarioScript('raise SystemExit(0)'));
+assert.ok(sceneExit.error.includes('SystemExit'));
+console.log(`Verified ${lessonIds.length} complete scenarios / ${count} acceptance cases; unfinished, incorrect and broken integrations rejected; scenario execution, legacy code preservation, errors and output limits checked.`);

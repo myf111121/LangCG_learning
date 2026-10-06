@@ -5,7 +5,15 @@ export type GradingResult = { tests: TestResult[]; error: string | null; output:
 
 // The same harness is exercised with CPython in scripts/check-challenges.mjs.
 export function buildGradingScript(code: string, tests: CodeTest[]): string {
-  const input = JSON.stringify({ code, tests });
+  return buildExecutionScript(code, tests, 'acceptance');
+}
+
+export function buildScenarioScript(code: string): string {
+  return buildExecutionScript(code, [], 'scenario');
+}
+
+function buildExecutionScript(code: string, tests: CodeTest[], mode: 'acceptance' | 'scenario'): string {
+  const input = JSON.stringify({ code, tests, mode });
   return `
 import json as _json
 import io as _io
@@ -36,6 +44,13 @@ def _grade(_input):
         _compiled = compile(_input["code"], "solution.py", "exec")
     except BaseException:
         return {"tests": [], "error": _traceback.format_exc(limit=3)[-3000:], "output": ""}
+    if _input["mode"] == "scenario":
+        try:
+            with _contextlib.redirect_stdout(_output), _contextlib.redirect_stderr(_output):
+                exec(_compiled, {"__name__": "__main__"})
+            return {"tests": [], "error": None, "output": _output.getvalue()}
+        except BaseException:
+            return {"tests": [], "error": _traceback.format_exc(limit=4)[-3000:], "output": _output.getvalue()}
     for _case in _input["tests"]:
         try:
             with _contextlib.redirect_stdout(_output), _contextlib.redirect_stderr(_output):

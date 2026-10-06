@@ -6,7 +6,7 @@
 
 网站提供今日任务、完整路线、实战验收、15 道自测题、21 个资料入口，以及任务 / 项目 / 复盘笔记和 Markdown 导出。进度和笔记保存在 D1，按当前 ChatGPT 用户隔离。代码与任务进度一同保存到当前账户。保存草稿会将该任务设为待验收。旧版仅手动标记的任务需通过代码测试，才计入新版任务进度；笔记和每周项目记录保留。自测结果与概念演示是本次页面的临时练习状态。
 
-完整路线见 LEARNING_PATH.md。24 个任务都包含学习重点、具体代码场景、初始 Python 代码、接口约定、自动验收用例和参考资料。点击任务会进入独立学习页面（`/learn/<任务ID>`），支持直接访问和刷新恢复。阅读、代码挑战与笔记使用整页布局，提供返回入口与相邻任务导航。用户在页面内实现代码，点击“运行并验收”，73 组测试检查正常路径、边界与失败行为；全部通过才自动完成任务。资料核对日期为 2026-10-07；中文教程用于理解和案例索引，接口以当前官方文档为准。
+完整路线见 LEARNING_PATH.md。24 个任务都包含学习重点、具体代码场景、初始 Python 代码、接口约定、自动验收用例和参考资料。点击任务会进入独立学习页面（`/learn/<任务ID>`），支持直接访问和刷新恢复。阅读、代码挑战与笔记使用整页布局，提供返回入口与相邻任务导航。用户在页面内实现代码，点击“运行并验收”，97 组测试检查正常路径、边界、失败行为与完整场景协作；全部通过才自动完成任务。资料核对日期为 2026-10-07；中文教程用于理解和案例索引，接口以当前官方文档为准。
 
 ## 本地开发
 
@@ -28,10 +28,10 @@ npm run dev
 - app/study-workspace.tsx：学习界面、账户记录与导航。
 - app/learn/[lessonId]/page.tsx、app/lesson-workspace.tsx：独立任务页面与整页学习布局。
 - app/learning-navigation.ts：任务地址和返回位置。
-- app/code-challenges.ts：24 个代码场景、函数骨架和 73 组自动验收用例。
+- app/code-challenges.ts、app/challenge-scenarios.ts：24 个完整业务场景、上下游组件、调用入口和 97 组自动验收用例。
 - app/code-practice.tsx、app/python-grader.ts、public/python-worker.js：编辑器、测试反馈和 Python 执行。
 - scripts/check-challenges.mjs：用参考实现和错误实现验证判题规则。
-- app/globals.css：主题和响应式布局。
+- app/globals.css、app/scenario-practice.css：主题、场景调用链和响应式布局。
 - app/api/learning/route.ts：认证、验证与保存接口。
 - db/schema.ts、drizzle/：学习记录结构与迁移。
 - .openai/hosting.json：网站身份和逻辑 DB 绑定。
@@ -53,6 +53,8 @@ python approval_demo.py
 
 ## 验证
 
-开发验证：`npm run check:challenges`（需要本地 Python，或通过 CHALLENGE_PYTHON 指定解释器），以及 TypeScript 检查和生产构建。判题验证覆盖 24 个正确实现、未完成代码、错误实现、语法错误、异常和输出长度限制。
+开发验证：`npm run check:challenges`（需要本地 Python，或通过 CHALLENGE_PYTHON 指定解释器），以及 TypeScript 检查和生产构建。判题验证覆盖 24 个完整程序、未完成代码、错误实现、上下游集成错误、场景输出、旧代码保留、语法错误、异常和输出长度限制。
+
+每个挑战展示业务背景、“上游输入 → 本节组件 → 下游使用”的调用链及与其他任务的联系。编辑器提供业务数据、辅助组件与 `run_scenario()`，学习者补全标记区域。“运行场景”以 `__main__` 执行整个程序，显示业务输出，不修改进度；“运行并验收”检查原有接口边界并增加完整场景集成用例，全部通过后保存代码与完成记录。旧版仅包含函数的已保存代码会自动包入场景模板，保留实现；再次保存时写入完整程序。
 
 页面通过 Pyodide 在独立 Web Worker 中运行 Python 标准库练习，不调用付费模型。首次执行从官方文档使用的 jsDelivr CDN 加载固定版本 v314.0.7；加载失败或超时会保留代码并支持重试。运行超过 10 秒会终止 Worker，也可主动停止。每次运行使用新环境，各测试重新执行用户代码，避免状态互相污染。测试失败显示实际值、预期值或异常；测试结果仅用于个人学习进度。实际 LangChain / LangGraph 集成和每周项目仍在自己的 Python 环境运行。

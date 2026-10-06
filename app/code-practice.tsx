@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, Cloud, LoaderCircle, Play, RotateCcw, Square, XCircle } from 'lucide-react';
 import type { CodeChallenge } from './code-challenges';
-import { buildGradingScript, type GradingResult } from './python-grader';
+import { buildGradingScript, buildScenarioScript, type GradingResult } from './python-grader';
 
 type Props = {
   lessonId: string;
@@ -19,12 +19,15 @@ type Props = {
 export function CodePractice({ lessonId, challenge, code, savedCode, completed, canSave, onChange, onSave }: Props) {
   const [phase, setPhase] = useState<'idle' | 'loading' | 'running' | 'saving'>('idle');
   const [result, setResult] = useState<GradingResult | null>(null);
+  const [scenarioResult, setScenarioResult] = useState<GradingResult | null>(null);
+  const [runMode, setRunMode] = useState<'scenario' | 'acceptance'>('acceptance');
   const [savePending, setSavePending] = useState(false);
   const [testedCode, setTestedCode] = useState('');
   const workerRef = useRef<Worker | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const generationRef = useRef(0);
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
+  const runModeRef = useRef<'scenario' | 'acceptance'>('acceptance');
   const executing = phase !== 'idle';
   const passed = !!result && !result.error && result.tests.length === challenge.tests.length && result.tests.every(test => test.passed);
 
@@ -44,6 +47,7 @@ export function CodePractice({ lessonId, challenge, code, savedCode, completed, 
   function changeCode(value: string) {
     onChange(value);
     setResult(null);
+    setScenarioResult(null);
     setSavePending(false);
   }
 
@@ -51,7 +55,9 @@ export function CodePractice({ lessonId, challenge, code, savedCode, completed, 
     generationRef.current += 1;
     dispose();
     setPhase('idle');
-    setResult({ tests: [], error: message, output: '' });
+    const report = { tests: [], error: message, output: '' };
+    if (runModeRef.current === 'scenario') setScenarioResult(report);
+    else setResult(report);
   }
 
   async function persist(snapshot: string, success: boolean, generation: number) {
@@ -67,13 +73,18 @@ export function CodePractice({ lessonId, challenge, code, savedCode, completed, 
     setPhase('idle');
   }
 
-  function run() {
+  function run(mode: 'scenario' | 'acceptance') {
     dispose();
     const generation = ++generationRef.current;
     const snapshot = code;
     setTestedCode(snapshot);
-    setResult(null);
-    setSavePending(false);
+    runModeRef.current = mode;
+    setRunMode(mode);
+    if (mode === 'scenario') setScenarioResult(null);
+    else {
+      setResult(null);
+      setSavePending(false);
+    }
     setPhase('loading');
     try {
       const worker = new Worker('/python-worker.js', { type: 'module' });
@@ -93,13 +104,16 @@ export function CodePractice({ lessonId, challenge, code, savedCode, completed, 
         } else if (event.data.type === 'result' && event.data.result) {
           dispose();
           const report = event.data.result;
-          setResult(report);
           setPhase('idle');
-          const success = !report.error && report.tests.length === challenge.tests.length && report.tests.every(test => test.passed);
-          void persist(snapshot, success, generation);
+          if (mode === 'scenario') setScenarioResult(report);
+          else {
+            setResult(report);
+            const success = !report.error && report.tests.length === challenge.tests.length && report.tests.every(test => test.passed);
+            void persist(snapshot, success, generation);
+          }
         }
       };
-      worker.postMessage({ script: buildGradingScript(snapshot, challenge.tests) });
+      worker.postMessage({ script: mode === 'scenario' ? buildScenarioScript(snapshot) : buildGradingScript(snapshot, challenge.tests) });
     } catch {
       finishWithError('无法启动 Python 环境，请刷新页面后重试。');
     }
@@ -107,9 +121,25 @@ export function CodePractice({ lessonId, challenge, code, savedCode, completed, 
 
   return <div className="lesson-content code-practice">
     <div className="challenge-heading"><h3>{challenge.title}</h3><span>Python · {challenge.tests.length} 组测试</span></div>
+    <section className="challenge-context" aria-label="业务场景与调用流程">
+      <span className="scenario-eyebrow">知识库助手 · 本节业务场景</span>
+      <h3>{challenge.context.title}</h3>
+      <p>{challenge.context.story}</p>
+      <ol className="scenario-flow">{challenge.context.flow.map((step, index) => <li key={step} className={index === 1 ? 'your-component' : ''}><span>{index === 1 ? '本节实现' : index === 0 ? '上游输入' : '下游使用'}</span><strong>{step}</strong></li>)}</ol>
+      <div className="scenario-connection"><strong>与其他功能的关系</strong><p>{challenge.context.connection}</p></div>
+    </section>
+    <h3>本节组件的接口与要求</h3>
     <p>{challenge.scenario}</p>
-    <h3>接口与要求</h3>
     <ul className="challenge-requirements">{challenge.requirements.map(item => <li key={item}>{item}</li>)}</ul>
+    <div className="scenario-editor-guide"><div><strong>在完整程序中补全一个组件</strong><p>已提供：{challenge.context.provided}。修改“你的任务”区域，run_scenario() 会将它与上下游连接起来。</p></div><button className="outline-button" disabled={executing} onClick={() => {
+      const markerStart = code.indexOf('# --- 你的任务：');
+      const start = markerStart < 0 ? 0 : code.indexOf('\n', markerStart) + 1;
+      const end = code.indexOf('# --- 已提供：完整调用流程', start);
+      editorRef.current?.focus();
+      editorRef.current?.setSelectionRange(start, end < 0 ? code.length : end);
+      if (editorRef.current) editorRef.current.scrollTop = code.slice(0, start).split('\n').length * 28 - 60;
+    }}>定位待实现代码</button></div>
+    <details className="scenario-expected"><summary>补全后运行场景，预期会看到什么？</summary><pre>{JSON.stringify(challenge.context.expected, null, 2)}</pre></details>
     <div className="practice-editor">
       <div className="practice-toolbar"><label htmlFor={'code-' + lessonId}>solution.py</label><span>{code === savedCode && savedCode ? '代码已保存' : '代码草稿'}</span><button disabled={executing} onClick={() => changeCode(challenge.starter)}><RotateCcw size={14} />恢复初始代码</button></div>
       <textarea ref={editorRef} id={'code-' + lessonId} aria-label="Python 代码编辑器" value={code} disabled={executing} spellCheck={false} autoCapitalize="off" autoCorrect="off" wrap="off" maxLength={20000} onChange={event => changeCode(event.target.value)} onKeyDown={event => {
@@ -122,11 +152,13 @@ export function CodePractice({ lessonId, challenge, code, savedCode, completed, 
       }} />
     </div>
     <div className="practice-actions">
-      <button className="solid-button" disabled={executing || !code.trim()} onClick={run}>{executing ? <LoaderCircle size={16} className="spin" /> : <Play size={16} />}{phase === 'loading' ? '正在加载 Python' : phase === 'running' ? '正在运行测试' : phase === 'saving' ? '正在保存结果' : '运行并验收'}</button>
+      <button className="outline-button" disabled={executing || !code.trim()} onClick={() => run('scenario')}>{executing && runMode === 'scenario' ? <LoaderCircle size={16} className="spin" /> : <Play size={16} />}{executing && runMode === 'scenario' ? phase === 'loading' ? '正在加载 Python' : '正在运行场景' : '运行场景'}</button>
+      <button className="solid-button" disabled={executing || !code.trim()} onClick={() => run('acceptance')}>{executing && runMode === 'acceptance' ? <LoaderCircle size={16} className="spin" /> : <CheckCircle2 size={16} />}{executing && runMode === 'acceptance' ? phase === 'loading' ? '正在加载 Python' : phase === 'running' ? '正在运行测试' : '正在保存结果' : '运行并验收'}</button>
       {(phase === 'loading' || phase === 'running') && <button className="outline-button" onClick={() => finishWithError('已停止运行，可以修改代码后重试。')}><Square size={14} />停止</button>}
       <button className="text-button" disabled={executing || !canSave || code === savedCode} onClick={() => void persist(code, false, generationRef.current)}><Cloud size={15} />保存草稿</button>
     </div>
-    <p className="practice-hint">补全代码后运行测试。全部通过会自动完成本任务；保存草稿会保留代码并将任务设为待验收。首次运行需要下载 Python 环境，练习无需 API Key。</p>
+    <p className="practice-hint">“运行场景”执行整个程序并显示业务输出；“运行并验收”检查组件边界及上下游协作，全部通过会自动完成本任务。保存草稿会将任务设为待验收。首次运行需要下载 Python 环境，练习无需 API Key。</p>
+    {scenarioResult && <section className={'scenario-result ' + (scenarioResult.error ? 'failed' : 'passed')} aria-label="场景运行结果" aria-live="polite"><strong>{scenarioResult.error ? '场景未跑通 · 根据错误补全组件' : '场景已运行 · 查看上下游协作结果'}</strong><pre>{scenarioResult.error || scenarioResult.output || '程序已执行，没有打印输出。'}</pre><span>场景运行用于观察程序行为；任务完成以自动验收为准。</span></section>}
     <div className={'grading-summary ' + (passed ? 'passed' : result ? 'failed' : '')} role="status" aria-live="polite">
       {result ? <><strong>{passed ? `全部通过 · ${result.tests.length} / ${challenge.tests.length}` : result.error ? '本次运行未完成' : `通过 ${result.tests.filter(test => test.passed).length} / ${challenge.tests.length} · 请继续修改`}</strong>{passed && <span>{phase === 'saving' ? '正在保存代码与完成记录……' : savePending ? '代码已通过，完成记录尚未保存。' : '本任务已自动完成，代码与进度已保存。'}</span>}</> : <span>{completed ? '已保存的代码通过过验收。修改后请重新运行测试。' : '等待运行：每组测试检查一个具体行为。'}</span>}
     </div>
