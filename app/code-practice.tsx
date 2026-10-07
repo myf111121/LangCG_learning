@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { CheckCircle2, Cloud, LoaderCircle, Play, RotateCcw, Square, XCircle } from 'lucide-react';
+import { CheckCircle2, Cloud, LoaderCircle, Maximize2, Minimize2, Play, RotateCcw, Square, XCircle } from 'lucide-react';
 import type { CodeChallenge } from './code-challenges';
 import { buildGradingScript, buildScenarioScript, type GradingResult } from './python-grader';
 
@@ -23,10 +23,13 @@ export function CodePractice({ lessonId, challenge, code, savedCode, completed, 
   const [runMode, setRunMode] = useState<'scenario' | 'acceptance'>('acceptance');
   const [savePending, setSavePending] = useState(false);
   const [testedCode, setTestedCode] = useState('');
+  const [editorExpanded, setEditorExpanded] = useState(false);
+  const [fullscreenError, setFullscreenError] = useState('');
   const workerRef = useRef<Worker | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const generationRef = useRef(0);
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
+  const editorContainerRef = useRef<HTMLDivElement | null>(null);
   const runModeRef = useRef<'scenario' | 'acceptance'>('acceptance');
   const executing = phase !== 'idle';
   const passed = !!result && !result.error && result.tests.length === challenge.tests.length && result.tests.every(test => test.passed);
@@ -43,6 +46,25 @@ export function CodePractice({ lessonId, challenge, code, savedCode, completed, 
     workerRef.current?.terminate();
     if (timerRef.current) clearTimeout(timerRef.current);
   }, []);
+
+  useEffect(() => {
+    const syncFullscreen = () => {
+      setEditorExpanded(document.fullscreenElement === editorContainerRef.current);
+    };
+    document.addEventListener('fullscreenchange', syncFullscreen);
+    return () => document.removeEventListener('fullscreenchange', syncFullscreen);
+  }, []);
+
+  async function toggleEditorFullscreen() {
+    setFullscreenError('');
+    try {
+      if (document.fullscreenElement === editorContainerRef.current) await document.exitFullscreen();
+      else await editorContainerRef.current?.requestFullscreen();
+      if (!executing) editorRef.current?.focus({ preventScroll: true });
+    } catch {
+      setFullscreenError('无法展开编辑器，请允许浏览器全屏，或拖动编辑框右下角继续增高。');
+    }
+  }
 
   function changeCode(value: string) {
     onChange(value);
@@ -119,6 +141,13 @@ export function CodePractice({ lessonId, challenge, code, savedCode, completed, 
     }
   }
 
+  const practiceActions = <div className="practice-actions">
+    <button className="outline-button" disabled={executing || !code.trim()} onClick={() => run('scenario')}>{executing && runMode === 'scenario' ? <LoaderCircle size={16} className="spin" /> : <Play size={16} />}{executing && runMode === 'scenario' ? phase === 'loading' ? '正在加载 Python' : '正在运行场景' : '运行场景'}</button>
+    <button className="solid-button" disabled={executing || !code.trim()} onClick={() => run('acceptance')}>{executing && runMode === 'acceptance' ? <LoaderCircle size={16} className="spin" /> : <CheckCircle2 size={16} />}{executing && runMode === 'acceptance' ? phase === 'loading' ? '正在加载 Python' : phase === 'running' ? '正在运行测试' : '正在保存结果' : '运行并验收'}</button>
+    {(phase === 'loading' || phase === 'running') && <button className="outline-button" onClick={() => finishWithError('已停止运行，可以修改代码后重试。')}><Square size={14} />停止</button>}
+    <button className="text-button" disabled={executing || !canSave || code === savedCode} onClick={() => void persist(code, false, generationRef.current)}><Cloud size={15} />保存草稿</button>
+  </div>;
+
   return <div className="lesson-content code-practice">
     <div className="challenge-heading"><h3>{challenge.title}</h3><span>Python · {challenge.tests.length} 组测试</span></div>
     <section className="challenge-context" aria-label="业务场景与调用流程">
@@ -140,8 +169,8 @@ export function CodePractice({ lessonId, challenge, code, savedCode, completed, 
       if (editorRef.current) editorRef.current.scrollTop = code.slice(0, start).split('\n').length * 28 - 60;
     }}>定位待实现代码</button></div>
     <details className="scenario-expected"><summary>补全后运行场景，预期会看到什么？</summary><pre>{JSON.stringify(challenge.context.expected, null, 2)}</pre></details>
-    <div className="practice-editor">
-      <div className="practice-toolbar"><label htmlFor={'code-' + lessonId}>solution.py</label><span>{code === savedCode && savedCode ? '代码已保存' : '代码草稿'}</span><button disabled={executing} onClick={() => changeCode(challenge.starter)}><RotateCcw size={14} />恢复初始代码</button></div>
+    <div className="practice-editor" ref={editorContainerRef}>
+      <div className="practice-toolbar"><label htmlFor={'code-' + lessonId}>solution.py</label><span>{code === savedCode && savedCode ? '代码已保存' : '代码草稿'}</span><div className="practice-toolbar-actions"><button disabled={executing} onClick={() => changeCode(challenge.starter)}><RotateCcw size={14} />恢复初始代码</button><button aria-label={editorExpanded ? '收起编辑器' : '展开编辑器'} aria-pressed={editorExpanded} onClick={() => void toggleEditorFullscreen()}>{editorExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}{editorExpanded ? '收起编辑器 · Esc' : '展开编辑器'}</button></div></div>
       <textarea ref={editorRef} id={'code-' + lessonId} aria-label="Python 代码编辑器" value={code} disabled={executing} spellCheck={false} autoCapitalize="off" autoCorrect="off" wrap="off" maxLength={20000} onChange={event => changeCode(event.target.value)} onKeyDown={event => {
         if (event.key === 'Tab') {
           event.preventDefault();
@@ -150,13 +179,10 @@ export function CodePractice({ lessonId, challenge, code, savedCode, completed, 
           requestAnimationFrame(() => editorRef.current?.setSelectionRange(start + 4, start + 4));
         }
       }} />
+      {editorExpanded && <div className="practice-expanded-footer">{practiceActions}<span role="status" aria-live="polite">{scenarioResult ? scenarioResult.error ? '场景未跑通，收起编辑器查看详情。' : '场景已运行，收起编辑器查看输出。' : result ? passed ? '验收全部通过。' : '验收未通过，收起编辑器查看详情。' : '按 Esc 返回题目与测试结果'}</span></div>}
     </div>
-    <div className="practice-actions">
-      <button className="outline-button" disabled={executing || !code.trim()} onClick={() => run('scenario')}>{executing && runMode === 'scenario' ? <LoaderCircle size={16} className="spin" /> : <Play size={16} />}{executing && runMode === 'scenario' ? phase === 'loading' ? '正在加载 Python' : '正在运行场景' : '运行场景'}</button>
-      <button className="solid-button" disabled={executing || !code.trim()} onClick={() => run('acceptance')}>{executing && runMode === 'acceptance' ? <LoaderCircle size={16} className="spin" /> : <CheckCircle2 size={16} />}{executing && runMode === 'acceptance' ? phase === 'loading' ? '正在加载 Python' : phase === 'running' ? '正在运行测试' : '正在保存结果' : '运行并验收'}</button>
-      {(phase === 'loading' || phase === 'running') && <button className="outline-button" onClick={() => finishWithError('已停止运行，可以修改代码后重试。')}><Square size={14} />停止</button>}
-      <button className="text-button" disabled={executing || !canSave || code === savedCode} onClick={() => void persist(code, false, generationRef.current)}><Cloud size={15} />保存草稿</button>
-    </div>
+    {!editorExpanded && practiceActions}
+    {fullscreenError && <p className="practice-hint" role="alert">{fullscreenError}</p>}
     <p className="practice-hint">“运行场景”执行整个程序并显示业务输出；“运行并验收”检查组件边界及上下游协作，全部通过会自动完成本任务。保存草稿会将任务设为待验收。首次运行需要下载 Python 环境，练习无需 API Key。</p>
     {scenarioResult && <section className={'scenario-result ' + (scenarioResult.error ? 'failed' : 'passed')} aria-label="场景运行结果" aria-live="polite"><strong>{scenarioResult.error ? '场景未跑通 · 根据错误补全组件' : '场景已运行 · 查看上下游协作结果'}</strong><pre>{scenarioResult.error || scenarioResult.output || '程序已执行，没有打印输出。'}</pre><span>场景运行用于观察程序行为；任务完成以自动验收为准。</span></section>}
     <div className={'grading-summary ' + (passed ? 'passed' : result ? 'failed' : '')} role="status" aria-live="polite">

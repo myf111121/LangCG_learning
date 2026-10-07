@@ -30,10 +30,26 @@
 .scenario-result.failed { border-color: #ecd3c5; background: #fff3ee; color: #934f32; }
 .scenario-result > strong { font-size: 16px; }
 .scenario-result > span { display: block; font-size: 13px; margin-top: 12px; }
+
+.is-code-practice .learning-main { max-width: none; padding-inline: clamp(16px, 2.5vw, 48px); }
+.learning-panel .code-practice .practice-editor textarea { height: max(600px, 75vh); min-height: 600px; font-size: 15px; line-height: 1.6; }
+.practice-toolbar .practice-toolbar-actions { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin-left: auto; }
+.practice-toolbar .practice-toolbar-actions button { margin-left: 0; min-height: 28px; }
+.practice-editor:fullscreen { display: flex; flex-direction: column; width: 100%; height: 100%; border: 0; border-radius: 0; }
+.practice-editor:fullscreen .practice-toolbar { flex-shrink: 0; }
+.learning-panel .code-practice .practice-editor:fullscreen textarea { flex: 1; height: auto; min-height: 0; resize: none; }
+.practice-expanded-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 18px; border-top: 1px solid #3d354f; background: #342c43; }
+.practice-expanded-footer .practice-actions { margin: 0; }
+.practice-expanded-footer .text-button { color: #d9cfea; }
+.practice-expanded-footer > span { color: #d9cfea; font-size: 14px; }
+
 @media (max-width: 767px) {
   .challenge-context { padding: 18px; }
   .scenario-flow { grid-template-columns: 1fr; gap: 24px; }
   .scenario-flow li + li::before { content: '↓'; left: 50%; top: -26px; transform: translateX(-50%); }
   .scenario-editor-guide { flex-direction: column; align-items: flex-start; gap: 12px; }
   .scenario-result { padding: 14px; }
+  .learning-panel .code-practice .practice-editor textarea { height: max(440px, 65svh); min-height: 440px; font-size: 14px; }
+  .practice-toolbar .practice-toolbar-actions { gap: 12px; }
+  .practice-expanded-footer { padding: 10px 12px; }
 }

@@ -35,7 +35,7 @@ export function LessonWorkspace({ lesson, tab, onTabChange, view, week, complete
   const backHref = workspaceHref(view, week);
   const backLabel = view === 'roadmap' ? '返回学习路线' : view === 'notes' ? '返回学习笔记' : '返回学习工作台';
 
-  return <div className="learning-page">
+  return <div className={'learning-page' + (tab === 'practice' ? ' is-code-practice' : '')}>
     <header className="learning-topbar"><a className="learning-brand" href={backHref}><Network size={22} /><span>GRAPH STUDY</span></a><a className="outline-button" href={backHref}>{backLabel}</a></header>
     <main className="learning-main">
       <nav className="learning-breadcrumb" aria-label="学习位置"><a href={workspaceHref('roadmap', courseWeek)}>第 {courseWeek} 周 · {phase.title}</a><span>/</span><span>任务 {lesson.id.slice(-1)}</span></nav>
