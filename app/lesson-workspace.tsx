@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CodePractice } from './code-practice';
 import { codeChallenges } from './code-challenges';
 import { allLessons, phases, sourceById, type Lesson } from './curriculum';
-import { lessonHref, workspaceHref } from './learning-navigation';
+import { lessonHref, lessonWeek, workspaceHref } from './learning-navigation';
 
 type Props = {
   lesson: Lesson;
@@ -30,7 +30,7 @@ export function LessonWorkspace({ lesson, tab, onTabChange, view, week, complete
   const index = allLessons.findIndex(item => item.id === lesson.id);
   const previous = allLessons[index - 1];
   const next = allLessons[index + 1];
-  const courseWeek = Number(lesson.id.charAt(1));
+  const courseWeek = lessonWeek(lesson.id);
   const phase = phases[courseWeek - 1];
   const backHref = workspaceHref(view, week);
   const backLabel = view === 'roadmap' ? '返回学习路线' : view === 'notes' ? '返回学习笔记' : '返回学习工作台';
@@ -47,7 +47,7 @@ export function LessonWorkspace({ lesson, tab, onTabChange, view, week, complete
         <Tabs value={tab} onValueChange={onTabChange}>
           <TabsList className="learning-tabs"><TabsTrigger value="read"><BookOpen size={16} />理解与阅读</TabsTrigger><TabsTrigger value="practice"><Code2 size={16} />代码挑战</TabsTrigger><TabsTrigger value="note">学习笔记</TabsTrigger></TabsList>
           <TabsContent value="read"><div className="learning-reading">
-            <div className="lesson-content"><h2>本次重点</h2><p>{lesson.concept}</p><div className="inline-tags">{lesson.tags.map(tag => <code key={tag}>{tag}</code>)}</div><div className="lesson-guidance">先读对应主题，再进入代码挑战独立实现。遇到旧接口时，对照官方迁移指南。</div><button className="solid-button" onClick={() => onTabChange('practice')}><Code2 size={16} />进入代码挑战</button></div>
+            <div className="lesson-content"><h2>本次重点</h2><p>{lesson.concept}</p><div className="inline-tags">{lesson.tags.map(tag => <code key={tag}>{tag}</code>)}</div>{lesson.reading?.map(section=><section className="lesson-reading-section" key={section.title}><h3>{section.title}</h3><p>{section.body}</p></section>)}<div className="lesson-guidance">{phase.track==='langgraph'?'按本页讲解阅读官方主题，再用中文案例和专业课程巩固。练习使用真实 LangGraph 1.2.14，本地运行自动测试后将结果导回网页。':'先读对应主题，再进入代码挑战独立实现。遇到旧接口时，对照官方迁移指南。'}</div><button className="solid-button" onClick={() => onTabChange('practice')}><Code2 size={16} />进入代码挑战</button></div>
             <aside className="learning-references"><h2>阅读资料</h2>{lesson.refs.map(id => { const source = sourceById(id); return <a className="source-link" key={id} href={source.url} target="_blank" rel="noopener noreferrer"><span><small>{source.kind}</small>{source.title}</span><ExternalLink size={15} /></a>; })}</aside>
           </div></TabsContent>
           <TabsContent value="practice"><CodePractice key={lesson.id} lessonId={lesson.id} challenge={codeChallenges[lesson.id]} code={code} savedCode={savedCode} completed={completed} canSave={canSave} onChange={onCodeChange} onSave={onSaveCode} /></TabsContent>
@@ -56,7 +56,7 @@ export function LessonWorkspace({ lesson, tab, onTabChange, view, week, complete
       </section>
       <nav className="learning-task-navigation" aria-label="相邻学习任务">
         {previous ? <a className="learning-task-link" href={lessonHref(previous.id, 'read', view, week)}><small>上一任务</small><strong>{previous.title}</strong></a> : <span />}
-        {next ? <a className="learning-task-link next" href={lessonHref(next.id, 'read', view, week)}><small>下一任务</small><strong>{next.title}</strong></a> : <a className="learning-task-link next" href={workspaceHref('projects', 6)}><small>完成路线后</small><strong>继续实战项目</strong></a>}
+        {next ? <a className="learning-task-link next" href={lessonHref(next.id, 'read', view, week)}><small>下一任务</small><strong>{next.title}</strong></a> : <a className="learning-task-link next" href={workspaceHref('projects', phases.length)}><small>完成路线后</small><strong>继续实战项目</strong></a>}
       </nav>
     </main>
   </div>;

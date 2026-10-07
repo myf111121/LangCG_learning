@@ -53,3 +53,10 @@
   .practice-toolbar .practice-toolbar-actions { gap: 12px; }
   .practice-expanded-footer { padding: 10px 12px; }
 }
+.native-runtime-guide{padding:20px 22px;margin:0 0 26px;border:1px solid #d7c9ee;border-radius:10px;background:#f5f1fb;color:#625274;line-height:1.8}
+.native-runtime-guide strong{font-size:17px}.native-runtime-guide p{margin:8px 0 12px!important;font-size:14px!important}.native-runtime-guide ol{list-style:decimal;padding-left:22px;font-size:14px}.native-runtime-guide li{padding:4px 0;overflow-wrap:anywhere}.native-runtime-guide code{font:13px/1.7 Consolas,monospace;overflow-wrap:anywhere}.native-runtime-guide small{display:block;font-size:12px;margin-top:13px;color:#81748f}
+.lesson-reading-section{margin:28px 0}.lesson-reading-section h3{font-size:17px!important}.lesson-reading-section p{font-size:15px!important;line-height:1.95!important}
+.langgraph-intro{display:flex;align-items:center;justify-content:space-between;gap:24px;margin:22px 0;padding:23px 27px;border:1px solid #d7c9ee;border-radius:12px;background:linear-gradient(120deg,#f0eaf9,#f5f8ef)}.langgraph-intro h2{font-size:22px;margin:6px 0 10px}.langgraph-intro p{font-size:14px;color:#71647f}.langgraph-intro button{flex-shrink:0}
+.route-tracks{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:18px 0 14px}.route-tracks button{padding:10px 15px;border:1px solid #ded7e8;border-radius:7px;background:#fff;color:#7c6d8e;font-size:14px}.route-tracks button.active{background:#eee7f9;border-color:#b7a0dd;color:#685093}.route-tracks>span{font-size:12px;color:#8a7e98;margin-left:auto}
+.week-tabs{flex-wrap:wrap!important;height:auto!important}.resource-tabs{flex-wrap:wrap!important;height:auto!important}
+@media(max-width:767px){.langgraph-intro{align-items:flex-start;flex-direction:column;padding:20px}.langgraph-intro h2{font-size:20px}.route-tracks>span{width:100%;margin-left:0}.route-strip{grid-template-columns:repeat(2,minmax(0,1fr))}.native-runtime-guide{padding:17px}.resource-tabs [data-slot=tabs-trigger]{flex:1;min-width:40%}}

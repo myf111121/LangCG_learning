@@ -207,9 +207,10 @@ const grade = (code, tests) => execute(buildGradingScript(code, tests));
 
 const lessonIds = [...readFileSync(new URL('../app/curriculum.ts', import.meta.url), 'utf8').matchAll(/L\('(w\d-\d)'/g)].map(match => match[1]);
 assert.equal(lessonIds.length, 24);
-assert.deepEqual(Object.keys(codeChallenges), lessonIds);
+assert.deepEqual(Object.keys(codeChallenges).filter(id => !codeChallenges[id].runtime), lessonIds);
 let count = 0;
 for (const [id, challenge] of Object.entries(codeChallenges)) {
+  if (challenge.runtime) continue;
   const completeProgram = contextualizeCode(challenge.context, solutions[id]);
   assert.equal(contextualizeCode(challenge.context, completeProgram), completeProgram, `${id}: legacy code wrapped twice`);
   const correct = grade(completeProgram, challenge.tests);

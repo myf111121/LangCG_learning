@@ -1,4 +1,5 @@
 import { challengeContexts, contextualizeCode, type ChallengeContext } from './challenge-scenarios.ts';
+import { langgraphChallenges } from './langgraph-challenges.ts';
 
 export type CodeTest = { name: string; code: string };
 export type CodeChallenge = {
@@ -8,6 +9,7 @@ export type CodeChallenge = {
   starter: string;
   tests: CodeTest[];
   context: ChallengeContext;
+  runtime?: 'langgraph';
 };
 
 const test = (name: string, code: string): CodeTest => ({ name, code });
@@ -282,7 +284,7 @@ const componentChallenges: Record<string, Omit<CodeChallenge, 'context'>> = {
   },
 };
 
-export const codeChallenges: Record<string, CodeChallenge> = Object.fromEntries(
+export const codeChallenges: Record<string, CodeChallenge> = { ...Object.fromEntries(
   Object.entries(componentChallenges).map(([id, challenge]) => {
     const context = challengeContexts[id];
     return [id, {
@@ -293,4 +295,4 @@ export const codeChallenges: Record<string, CodeChallenge> = Object.fromEntries(
         `expect_equal(run_scenario(), json.loads(${JSON.stringify(JSON.stringify(context.expected))}))`)],
     }];
   }),
-);
+), ...langgraphChallenges };

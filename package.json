@@ -12,6 +12,7 @@
     "start": "node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js dev --config dist/server/wrangler.json --local --persist-to .wrangler/state --ip 127.0.0.1 --inspector-port 0",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "check:challenges": "node scripts/check-challenges.mjs",
+    "check:langgraph": "node scripts/check-langgraph.mjs && node scripts/check-local-runner.mjs",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {

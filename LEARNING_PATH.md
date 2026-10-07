@@ -1,6 +1,6 @@
-# LangChain 与 LangGraph：6 周进阶路线
+# LangChain 与 LangGraph：12 周完整路线
 
-Python · 每周约 12 小时 · 共 72 小时
+Python · 每周约 12 小时 · 共 144 小时
 
 主线：带审批与记忆的知识库助手。每周 4 个学习任务（阅读 4h + 编码 4h），另有项目实战 4h。
 
@@ -799,3 +799,2849 @@ LearnGraph 7 / 8.1 / 15
 - [LearnGraph · 4.2 动态中断](https://www.learngraph.online/LearnGraph%201.X/module-4-human-in-the-loop/4.2%20Dynamic%20Breakpoints.html)：示例接口请对照官方 interrupt 文档。
 - [LearnGraph · 5.2 子图](https://www.learngraph.online/LearnGraph%201.X/module-5-advanced-patterns/5.2%20Sub-Graph.html)：父子图边界的中文补充。
 - [LearnGraph · 13.1 Agentic RAG](https://www.learngraph.online/LearnGraph%201.X/module-13-agentic-rag/13.1%20Introduction.html)：高级检索工作流的案例入口。
+
+## LangGraph 框架实战：第 7–12 周
+
+前 6 周保留原有 Agent 工程场景；以下新增 24 个真实 LangGraph API 任务、96 组验收和 6 次项目交付。每周阅读 4h、编码 4h、项目 4h。代码使用 LangGraph 1.2.14，Python 3.11+。
+
+网页可编辑、全屏与保存草稿。下载运行包后安装 requirements.txt，执行 solution.py 查看场景，执行 verify.py 生成 result.json，再导入网页验收。若在本地改代码，先导入 solution.py。任务、代码和用例版本必须匹配，全部通过后保存完成记录。无需模型 API Key。官方文档校准接口，LearnGraph、LangChain Academy 与 Hugging Face Agents Course 补充案例。
+
+## 第 7 周：LangGraph 基础与图建模
+
+从真实 StateGraph 开始，掌握状态、节点、边与循环
+
+章节：LearnGraph 1.4 / 2.1 / 3.1–3.3 · 官方 Graph API
+
+### w7-1 · 用 StateGraph 编译第一个工作流
+
+学习重点：用 StateGraph、START、END、节点更新和 compile 构建真正可执行的顺序图。
+
+#### 从构建器到运行对象
+
+StateGraph 描述图；add_node 注册函数，add_edge 表达先后关系，compile 产生可 invoke 的对象。清理查询、生成回答和最终结果是不同阶段。用固定函数理解执行顺序后，再在节点中接入模型。
+
+#### 节点只提交自己的更新
+
+查看已提供的 normalize 与 answer：输入是当前状态，返回值是局部更新。将 START → normalize → answer → END 连起来，确认空白被清理，输入对象没有被原地修改，并检查返回对象是 CompiledStateGraph。
+
+#### 自己的第一次图实验
+
+画出图并记录一次输入、每个节点的更新和最终输出。在 answer 节点换成自己的笔记函数，保持图结构和验收不变。模型不是运行最小图的必要条件。
+
+业务场景：知识库收到带空白的查询。把清理与回答两个普通函数连接成真正可运行的 LangGraph。
+
+调用链：业务输入与真实 LangGraph 运行时 → 你实现：build_graph → 图输出、快照或事件 → 下游使用
+
+功能关系：把前六周的普通组件接到图运行时；后续 schema、分支和 checkpoint 都在这个图上扩展。
+
+接口与要求：
+
+- 返回 CompiledStateGraph，而不是直接计算答案。
+- 节点命名为 normalize、answer；按 START → normalize → answer → END 连接。
+- 节点只返回更新，输入字典不能被原地修改。
+
+初始程序：
+
+```python
+# === SCENARIO: 知识库助手 ===
+# 用 StateGraph 编译第一个工作流
+import json
+
+# --- 已提供：业务数据与上下游组件 ---
+import asyncio
+import json
+from typing import TypedDict, Annotated, Literal
+from operator import add
+from dataclasses import dataclass
+from langgraph.graph import StateGraph, START, END, MessagesState
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command, Send, interrupt, RetryPolicy, CachePolicy
+from langgraph.runtime import Runtime
+from langgraph.store.memory import InMemoryStore
+from langgraph.cache.memory import InMemoryCache
+
+class State(TypedDict):
+    query: str
+    answer: str
+def normalize(state):
+    return {"query": state["query"].strip()}
+def answer(state):
+    return {"answer": "笔记：" + state["query"]}
+
+# --- 你的任务：补全本节组件，保持函数接口 ---
+def build_graph():
+    """按要求使用真实 LangGraph API 完成组件。"""
+    raise NotImplementedError("请完成 LangGraph 组件")
+
+# --- 已提供：完整调用流程；补全组件后可直接运行 ---
+def run_scenario():
+    graph = build_graph()
+    return graph.invoke({"query": "  checkpoint  "})
+
+if __name__ == "__main__":
+    print(json.dumps(run_scenario(), ensure_ascii=False, indent=2))
+
+```
+
+自动验收：
+
+**真正编译图，并按顺序运行**
+
+```python
+g = build_graph()
+expect_equal(isinstance(g, CompiledStateGraph), True)
+expect_equal(g.invoke({"query":" graph "})["answer"], "笔记：graph")
+```
+
+**空输入文本与输入对象保留**
+
+```python
+data = {"query":"   "}
+g = build_graph()
+expect_equal(g.invoke(data), {"query":"", "answer":"笔记："})
+expect_equal(data, {"query":"   "})
+```
+
+**结构中包含入口、业务节点与出口**
+
+```python
+g = build_graph()
+expect_equal(set(g.get_graph().nodes), {START, "normalize", "answer", END})
+```
+
+**完整场景：真实图与上下游得到预期结果**
+
+```python
+expect_equal(run_scenario(), json.loads("{\"query\":\"checkpoint\",\"answer\":\"笔记：checkpoint\"}"))
+```
+
+参考资料：
+
+- [LangGraph · Overview](https://docs.langchain.com/oss/python/langgraph/overview) · 官方文档
+- [LangGraph · Graph API](https://docs.langchain.com/oss/python/langgraph/graph-api) · 官方文档
+- [LearnGraph · 1.4 LangGraph basics](https://www.learngraph.online/LearnGraph%201.X/module-1-langgraph-basics/1.4%20LangGraph%20basics.html) · 中文教程
+- [LearnGraph · 2.1 Simple graph](https://www.learngraph.online/LearnGraph%201.X/module-2-agent-chain-router/2.1%20Simple%20graph.html) · 中文教程
+- [Hugging Face · Agents Course / LangGraph](https://huggingface.co/learn/agents-course/unit2/langgraph/introduction) · 专业课程
+
+### w7-2 · 区分输入、内部状态与公开输出
+
+学习重点：区分 Input、内部 State 和 Output，让调试数据留在工作流内部。
+
+#### 字段属于哪个边界
+
+query 是调用者输入，debug 是内部诊断，answer 是公开输出。定义独立 schema，向 StateGraph 传 input_schema 和 output_schema。TypedDict 描述类型；严格校验外部请求时另设验证层。
+
+#### 观察输出过滤
+
+对同一输入比较 invoke 结果与节点更新流：debug 能出现在内部更新，却不应出现在公开输出。不要把私有状态全部复制到服务响应里。验收分别检查公开字段和内部诊断。
+
+#### 扩展实验
+
+增加内部检索分数字段，确认公开接口不变。为状态、日志、缓存和 API 响应分别确定所需字段，再写一条防止意外泄漏的测试。
+
+业务场景：检索节点要保留调试来源，界面只应该得到 answer。用独立的输入和输出 schema 建立图的公开契约。
+
+调用链：业务输入与真实 LangGraph 运行时 → 你实现：build_graph → 图输出、快照或事件 → 下游使用
+
+功能关系：公开输出和内部协作分开；部署接口与后续子图转换沿用这个边界。
+
+接口与要求：
+
+- 使用 StateGraph(State, input_schema=Input, output_schema=Output)。
+- 注册 respond 节点并编译；invoke 只返回 answer。
+- 输出 schema 负责过滤字段，不能把它当作鉴权或流式脱敏机制。
+
+初始程序：
+
+```python
+# === SCENARIO: 知识库助手 ===
+# 区分输入、内部状态与公开输出
+import json
+
+# --- 已提供：业务数据与上下游组件 ---
+import asyncio
+import json
+from typing import TypedDict, Annotated, Literal
+from operator import add
+from dataclasses import dataclass
+from langgraph.graph import StateGraph, START, END, MessagesState
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command, Send, interrupt, RetryPolicy, CachePolicy
+from langgraph.runtime import Runtime
+from langgraph.store.memory import InMemoryStore
+from langgraph.cache.memory import InMemoryCache
+
+class Input(TypedDict):
+    query: str
+class Output(TypedDict):
+    answer: str
+class State(Input, Output):
+    debug: str
+def respond(state):
+    return {"answer":"结果：" + state["query"], "debug":"internal-index"}
+
+# --- 你的任务：补全本节组件，保持函数接口 ---
+def build_graph():
+    """按要求使用真实 LangGraph API 完成组件。"""
+    raise NotImplementedError("请完成 LangGraph 组件")
+
+# --- 已提供：完整调用流程；补全组件后可直接运行 ---
+def run_scenario():
+    return build_graph().invoke({"query":"interrupt"})
+
+if __name__ == "__main__":
+    print(json.dumps(run_scenario(), ensure_ascii=False, indent=2))
+
+```
+
+自动验收：
+
+**只公开约定输出**
+
+```python
+g = build_graph()
+expect_equal(isinstance(g, CompiledStateGraph), True)
+expect_equal(g.invoke({"query":"a"}), {"answer":"结果：a"})
+```
+
+**内部节点仍然产生调试字段**
+
+```python
+updates = list(build_graph().stream({"query":"b"}, stream_mode="updates"))
+expect_equal(updates[0]["respond"]["debug"], "internal-index")
+```
+
+**不依赖固定查询或旧状态**
+
+```python
+g = build_graph()
+expect_equal(g.invoke({"query":"x"}), {"answer":"结果：x"})
+expect_equal(g.invoke({"query":"y"}), {"answer":"结果：y"})
+```
+
+**完整场景：真实图与上下游得到预期结果**
+
+```python
+expect_equal(run_scenario(), json.loads("{\"answer\":\"结果：interrupt\"}"))
+```
+
+参考资料：
+
+- [LangGraph · Graph API](https://docs.langchain.com/oss/python/langgraph/graph-api) · 官方文档
+- [LearnGraph · 3.3 Multiple Schemas](https://www.learngraph.online/LearnGraph%201.X/module-3-state-reducer-memory/3.3%20Multiple%20Schemas.html) · 中文教程
+- [LangGraph · Use the Graph API](https://docs.langchain.com/oss/python/langgraph/use-graph-api) · 官方文档
+
+### w7-3 · 用 Annotated 和 reducer 累积更新
+
+学习重点：使用 Annotated 指定 reducer，正确区分覆盖更新与累积更新。
+
+#### 合并是字段的规则
+
+本例 log 使用 operator.add，将两个节点新增记录追加到 seed 后；普通字段采用覆盖更新。reducer 是运行时的状态合并规则，节点无需手动拼接已有列表。
+
+#### 为什么旧记录会重复
+
+如果节点先返回旧列表加新记录，追加 reducer 又会把旧项合并一次。clean 和 retrieve 只返回自己的新增记录，分别用空列表和已有记录验证没有重复。
+
+#### 业务上的合并选择
+
+日志追加、集合去重和按 ID 更新需要不同 reducer。追加顺序不应替代业务时间；带稳定 ID 和序号的事件更容易审计。用小输入先解释规则，再放进并行图。
+
+业务场景：清理与检索节点分别记录日志。为日志字段声明追加 reducer，避免后一个节点覆盖已有记录。
+
+调用链：业务输入与真实 LangGraph 运行时 → 你实现：build_graph → 图输出、快照或事件 → 下游使用
+
+功能关系：并行和 Send 的多个写入也需要 reducer；日志合并契约先在顺序图中验证。
+
+接口与要求：
+
+- 在函数内定义 State，log 为 Annotated[list[str], add]。
+- 节点只返回本次新增日志；图按 clean → retrieve 顺序运行。
+- 已有日志要保留；再次运行新图时不能共享之前的列表。
+
+初始程序：
+
+```python
+# === SCENARIO: 知识库助手 ===
+# 用 Annotated 和 reducer 累积更新
+import json
+
+# --- 已提供：业务数据与上下游组件 ---
+import asyncio
+import json
+from typing import TypedDict, Annotated, Literal
+from operator import add
+from dataclasses import dataclass
+from langgraph.graph import StateGraph, START, END, MessagesState
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command, Send, interrupt, RetryPolicy, CachePolicy
+from langgraph.runtime import Runtime
+from langgraph.store.memory import InMemoryStore
+from langgraph.cache.memory import InMemoryCache
+
+def clean(state):
+    return {"log":["clean"]}
+def retrieve(state):
+    return {"log":["retrieve"]}
+
+# --- 你的任务：补全本节组件，保持函数接口 ---
+def build_graph():
+    """按要求使用真实 LangGraph API 完成组件。"""
+    raise NotImplementedError("请完成 LangGraph 组件")
+
+# --- 已提供：完整调用流程；补全组件后可直接运行 ---
+def run_scenario():
+    return build_graph().invoke({"log":["request"]})
+
+if __name__ == "__main__":
+    print(json.dumps(run_scenario(), ensure_ascii=False, indent=2))
+
+```
+
+自动验收：
+
+**已有记录和两个节点的增量都保留**
+
+```python
+g = build_graph()
+expect_equal(isinstance(g, CompiledStateGraph), True)
+expect_equal(g.invoke({"log":["seed"]})["log"], ["seed","clean","retrieve"])
+```
+
+**空列表和不同调用互不污染**
+
+```python
+g = build_graph()
+expect_equal(g.invoke({"log":[]})["log"], ["clean","retrieve"])
+expect_equal(g.invoke({"log":["new"]})["log"], ["new","clean","retrieve"])
+```
+
+**节点返回增量，不重复追加旧日志**
+
+```python
+updates = list(build_graph().stream({"log":["old"]}, stream_mode="updates"))
+expect_equal(updates, [{"clean":{"log":["clean"]}}, {"retrieve":{"log":["retrieve"]}}])
+```
+
+**完整场景：真实图与上下游得到预期结果**
+
+```python
+expect_equal(run_scenario(), json.loads("{\"log\":[\"request\",\"clean\",\"retrieve\"]}"))
+```
+
+参考资料：
+
+- [LangGraph · Graph API](https://docs.langchain.com/oss/python/langgraph/graph-api) · 官方文档
+- [LearnGraph · 3.2 Reducers](https://www.learngraph.online/LearnGraph%201.X/module-3-state-reducer-memory/3.2%20Reducers.html) · 中文教程
+- [LangGraph · Use the Graph API](https://docs.langchain.com/oss/python/langgraph/use-graph-api) · 官方文档
+
+### w7-4 · 条件边、有界循环与兜底出口
+
+学习重点：通过条件边组织澄清、检索重试和兜底，循环必须有业务上限。
+
+#### 先定义出口
+
+空查询进入 clarify，找到 graph 证据则回答，其他查询最多检索两次后拒答。把 found 与 attempts 放进状态，路由函数据此返回下一节点，避免隐藏无限循环。
+
+#### 业务预算与递归限制
+
+尝试次数决定用户会看到的结果，recursion_limit 是运行时最后保护，二者不能互相替代。避免同一节点配置相互冲突的静态边和条件边。验收涵盖三个出口。
+
+#### 追踪一次失败
+
+打印每次检索 attempts，解释最后为何进入兜底。把相同预算原则迁移到模型修订流程，增加始终失败输入，确认仍然能够终止。
+
+业务场景：查询可能为空或暂时无结果。让图选择澄清、回答或最多两次检索后的拒答，避免无限循环。
+
+调用链：业务输入与真实 LangGraph 运行时 → 你实现：build_graph → 图输出、快照或事件 → 下游使用
+
+功能关系：把第 2 周的路由逻辑转为真正的条件边；后续 RAG 会加入查询改写。
+
+接口与要求：
+
+- 空 query 走 clarify；非空走 retrieve。
+- 找到证据走 respond；未找到且 attempts < 2 再检索，否则走 refuse。
+- 出口都连接 END，调用设置 recursion_limit=20。
+
+初始程序：
+
+```python
+# === SCENARIO: 知识库助手 ===
+# 条件边、有界循环与兜底出口
+import json
+
+# --- 已提供：业务数据与上下游组件 ---
+import asyncio
+import json
+from typing import TypedDict, Annotated, Literal
+from operator import add
+from dataclasses import dataclass
+from langgraph.graph import StateGraph, START, END, MessagesState
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command, Send, interrupt, RetryPolicy, CachePolicy
+from langgraph.runtime import Runtime
+from langgraph.store.memory import InMemoryStore
+from langgraph.cache.memory import InMemoryCache
+
+class State(TypedDict):
+    query: str
+    attempts: int
+    found: bool
+    answer: str
+def inspect_query(state):
+    return {"query":state["query"].strip()}
+def retrieve(state):
+    return {"attempts":state.get("attempts",0)+1, "found":state["query"]=="graph"}
+def respond(state):
+    return {"answer":"有依据的回答"}
+def clarify(state):
+    return {"answer":"请补充问题"}
+def refuse(state):
+    return {"answer":"没有足够证据"}
+
+# --- 你的任务：补全本节组件，保持函数接口 ---
+def build_graph():
+    """按要求使用真实 LangGraph API 完成组件。"""
+    raise NotImplementedError("请完成 LangGraph 组件")
+
+# --- 已提供：完整调用流程；补全组件后可直接运行 ---
+def run_scenario():
+    return build_graph().invoke({"query":"missing","attempts":0}, {"recursion_limit":20})
+
+if __name__ == "__main__":
+    print(json.dumps(run_scenario(), ensure_ascii=False, indent=2))
+
+```
+
+自动验收：
+
+**空问题不检索**
+
+```python
+r = build_graph().invoke({"query":" ","attempts":0}, {"recursion_limit":20})
+expect_equal(r["answer"],"请补充问题")
+expect_equal(r["attempts"],0)
+```
+
+**找到证据立即结束**
+
+```python
+r = build_graph().invoke({"query":" graph ","attempts":0}, {"recursion_limit":20})
+expect_equal((r["answer"],r["attempts"]),("有依据的回答",1))
+```
+
+**无结果最多检索两次**
+
+```python
+r = build_graph().invoke({"query":"x","attempts":0}, {"recursion_limit":20})
+expect_equal((r["answer"],r["attempts"]),("没有足够证据",2))
+```
+
+**完整场景：真实图与上下游得到预期结果**
+
+```python
+expect_equal(run_scenario(), json.loads("{\"query\":\"missing\",\"attempts\":2,\"found\":false,\"answer\":\"没有足够证据\"}"))
+```
+
+参考资料：
+
+- [LangGraph · Use the Graph API](https://docs.langchain.com/oss/python/langgraph/use-graph-api) · 官方文档
+- [LangGraph · Workflows & agents](https://docs.langchain.com/oss/python/langgraph/workflows-agents) · 官方文档
+- [LangChain Academy · 官方课程源码](https://github.com/langchain-ai/langchain-academy) · 专业课程
+
+### 本周交付：LG v0.1 · 真正可执行的工作流
+
+建立独立 Python 环境，把清理、检索与回答编译成真实图。提供输入/输出 schema、累积日志、澄清与有界兜底，保存图形和三条路径记录。
+
+- [ ] 使用真实 StateGraph，新环境可运行
+- [ ] 空查询、命中与兜底均可终止
+- [ ] 解释 reducer 合并与输出过滤
+
+## 第 8 周：消息、工具与运行时
+
+运行真实工具循环，并将节点事件提供给界面
+
+章节：LearnGraph 2 · 官方 Quickstart、Runtime、Streaming
+
+### w8-1 · MessagesState 与消息 ID 合并
+
+学习重点：用 MessagesState 与消息 ID 合并真实消息，理解追加和替换。
+
+#### 消息有结构
+
+HumanMessage、AIMessage、ToolMessage 包含角色、ID 与工具调用。MessagesState 的 reducer 合并消息更新；固定 ID 为 answer-1 时，更新应替换对应旧回答。
+
+#### 验收合并行为
+
+新 ID 表示新增消息，相同 ID 更新已有消息。给图一条旧回答再运行 respond，确认用户消息保留、回答被替换且不重复。人工编辑历史同样需要正确 ID。
+
+#### 接入模型之前
+
+固定回复无需 API Key；项目可替换为模型生成的 AIMessage。保留角色与调用结构，裁剪历史时维护工具请求和结果配对，不随意把所有消息转成字符串。
+
+业务场景：同一条助手回答被修正时，消息 ID 应替换原内容。使用 MessagesState，保留用户消息且避免重复回答。
+
+调用链：业务输入与真实 LangGraph 运行时 → 你实现：build_graph → 图输出、快照或事件 → 下游使用
+
+功能关系：消息状态将交给 ToolNode；工具调用 ID 与 ToolMessage 必须能够对应。
+
+接口与要求：
+
+- StateGraph 使用 MessagesState，并连接 respond。
+- 相同消息 ID 更新已有消息；不同 ID 追加。
+- 不能使用普通列表拼接替代 add_messages 的 ID 合并语义。
+
+初始程序：
+
+```python
+# === SCENARIO: 知识库助手 ===
+# MessagesState 与消息 ID 合并
+import json
+
+# --- 已提供：业务数据与上下游组件 ---
+import asyncio
+import json
+from typing import TypedDict, Annotated, Literal
+from operator import add
+from dataclasses import dataclass
+from langgraph.graph import StateGraph, START, END, MessagesState
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command, Send, interrupt, RetryPolicy, CachePolicy
+from langgraph.runtime import Runtime
+from langgraph.store.memory import InMemoryStore
+from langgraph.cache.memory import InMemoryCache
+
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+def respond(state):
+    return {"messages":[AIMessage(content="更新后的回答", id="answer-1")]}
+
+# --- 你的任务：补全本节组件，保持函数接口 ---
+def build_graph():
+    """按要求使用真实 LangGraph API 完成组件。"""
+    raise NotImplementedError("请完成 LangGraph 组件")
+
+# --- 已提供：完整调用流程；补全组件后可直接运行 ---
+def run_scenario():
+    r=build_graph().invoke({"messages":[HumanMessage(content="你好",id="user-1"),AIMessage(content="旧回答",id="answer-1")]})
+    return {"messages":[[m.id,m.content] for m in r["messages"]]}
+
+if __name__ == "__main__":
+    print(json.dumps(run_scenario(), ensure_ascii=False, indent=2))
+
+```
+
+自动验收：
+
+**相同 ID 替换，不重复追加**
+
+```python
+r=build_graph().invoke({"messages":[AIMessage(content="old",id="answer-1")]})
+expect_equal(len(r["messages"]),1)
+expect_equal(r["messages"][0].content,"更新后的回答")
+```
+
+**用户消息保留并追加新回答**
+
+```python
+r=build_graph().invoke({"messages":[HumanMessage(content="a",id="u")]})
+expect_equal([m.id for m in r["messages"]],["u","answer-1"])
+```
+
+**字典消息被转换为消息对象**
+
+```python
+r=build_graph().invoke({"messages":[{"role":"user","content":"a","id":"u"}]})
+expect_equal(isinstance(r["messages"][0],HumanMessage),True)
+```
+
+**完整场景：真实图与上下游得到预期结果**
+
+```python
+expect_equal(run_scenario(), json.loads("{\"messages\":[[\"user-1\",\"你好\"],[\"answer-1\",\"更新后的回答\"]]}"))
+```
+
+参考资料：
+
+- [LangGraph · Quickstart](https://docs.langchain.com/oss/python/langgraph/quickstart) · 官方文档
+- [LangGraph · Graph API](https://docs.langchain.com/oss/python/langgraph/graph-api) · 官方文档
+- [LangGraph · Add memory](https://docs.langchain.com/oss/python/langgraph/add-memory) · 官方文档
+
+### w8-2 · ToolNode 与 tools_condition 执行循环
+
+学习重点：组合 ToolNode 与 tools_condition，执行真实的模型—工具—模型图循环。
+
+#### 工具怎么进入图
+
+固定 agent 返回带 tool_calls 的 AIMessage；lookup_note 是有类型和说明的工具。ToolNode 执行调用并返回 ToolMessage，tools_condition 根据最后消息选择工具节点或结束。
+
+#### 正确连接与关联
+
+连接 START → agent、agent 的条件出口和 tools → agent。tool_call_id 与请求 ID 必须一致；检查四条消息的完整序列，最终回答后不能再执行工具。
+
+#### 替换固定 agent
+
+接入绑定工具的聊天模型时保留图结构，继续测试工具错误与终止行为。先验证执行循环，再评估模型决策的质量，本节无需购买模型服务。
+
+业务场景：模型输出用固定消息代替付费调用，但工具执行和图路由使用真实 ToolNode。让工具结果返回助手节点后结束。
+
+调用链：业务输入与真实 LangGraph 运行时 → 你实现：build_graph → 图输出、快照或事件 → 下游使用
+
+功能关系：固定模型输入用于稳定验收；实战时可以替换为支持 tool calling 的模型，而图结构保留。
+
+接口与要求：
+
+- 用 MessagesState 注册 agent 与 ToolNode([lookup])。
+- agent 通过 tools_condition 选择 tools 或 END；tools 返回 agent。
+- 保留真实 ToolMessage 及其 tool_call_id，不手写一个工具循环。
+
+初始程序：
+
+```python
+# === SCENARIO: 知识库助手 ===
+# ToolNode 与 tools_condition 执行循环
+import json
+
+# --- 已提供：业务数据与上下游组件 ---
+import asyncio
+import json
+from typing import TypedDict, Annotated, Literal
+from operator import add
+from dataclasses import dataclass
+from langgraph.graph import StateGraph, START, END, MessagesState
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command, Send, interrupt, RetryPolicy, CachePolicy
+from langgraph.runtime import Runtime
+from langgraph.store.memory import InMemoryStore
+from langgraph.cache.memory import InMemoryCache
+
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+from langchain_core.tools import tool
+from langgraph.prebuilt import ToolNode, tools_condition
+@tool
+def lookup(query: str) -> str:
+    """查询固定技术笔记。"""
+    return "checkpoint 保存状态" if query=="graph" else "没有笔记"
+def agent(state):
+    last=state["messages"][-1]
+    if isinstance(last,ToolMessage):
+        return {"messages":[AIMessage(content=last.content)]}
+    return {"messages":[AIMessage(content="",tool_calls=[{"name":"lookup","args":{"query":last.content},"id":"call-1","type":"tool_call"}])]}
+
+# --- 你的任务：补全本节组件，保持函数接口 ---
+def build_graph():
+    """按要求使用真实 LangGraph API 完成组件。"""
+    raise NotImplementedError("请完成 LangGraph 组件")
+
+# --- 已提供：完整调用流程；补全组件后可直接运行 ---
+def run_scenario():
+    r=build_graph().invoke({"messages":[HumanMessage(content="graph")]},{"recursion_limit":12})
+    return {"answer":r["messages"][-1].content,"tool_ids":[m.tool_call_id for m in r["messages"] if isinstance(m,ToolMessage)]}
+
+if __name__ == "__main__":
+    print(json.dumps(run_scenario(), ensure_ascii=False, indent=2))
+
+```
+
+自动验收：
+
+**工具消息与调用 ID 对应**
+
+```python
+r=build_graph().invoke({"messages":[HumanMessage(content="graph")]},{"recursion_limit":12})
+expect_equal([m.tool_call_id for m in r["messages"] if isinstance(m,ToolMessage)],["call-1"])
+```
+
+**工具执行后模型返回最终消息**
+
+```python
+r=build_graph().invoke({"messages":[HumanMessage(content="x")]},{"recursion_limit":12})
+expect_equal(len(r["messages"]),4)
+expect_equal(r["messages"][-1].content,"没有笔记")
+```
+
+**已存在工具结果时不会重复执行工具**
+
+```python
+r=build_graph().invoke({"messages":[ToolMessage(content="cached",tool_call_id="old")]},{"recursion_limit":12})
+expect_equal(len(r["messages"]),2)
+expect_equal(r["messages"][-1].content,"cached")
+```
+
+**完整场景：真实图与上下游得到预期结果**
+
+```python
+expect_equal(run_scenario(), json.loads("{\"answer\":\"checkpoint 保存状态\",\"tool_ids\":[\"call-1\"]}"))
+```
+
+参考资料：
+
+- [LangGraph · Quickstart](https://docs.langchain.com/oss/python/langgraph/quickstart) · 官方文档
+- [LangGraph · Use the Graph API](https://docs.langchain.com/oss/python/langgraph/use-graph-api) · 官方文档
+- [LangChain · Tools](https://docs.langchain.com/oss/python/langchain/tools) · 官方文档
+
+### w8-3 · Runtime context 与用户边界
+
+学习重点：通过 context_schema 和 Runtime 注入用户身份、资源与配置。
+
+#### 状态与上下文有不同职责
+
+查询与回答在节点之间更新，用户身份和依赖由调用者传 context。定义 Context 数据类，通过 Runtime[Context] 和 runtime.context 读取 user_id；连接对象不应存到 checkpoint。
+
+#### 复用图但隔离用户
+
+alice 与 bob 的笔记不同。复用编译图，分别传入两个 context，确认身份没有泄漏到公开输出，另一个用户也不会拿到前一用户的结果。
+
+#### 服务中的身份
+
+服务端从已认证会话确定用户，再构造 context。context 不会替代身份认证；数据库客户端和模型配置也可用同样方法注入，使节点便于独立测试。
+
+业务场景：同一个图为不同用户查询笔记。把用户身份放入每次调用的 Context，而不是写进共享全局变量。
+
+调用链：业务输入与真实 LangGraph 运行时 → 你实现：answer_node → 图输出、快照或事件 → 下游使用
+
+功能关系：Store 的 namespace 与部署的身份绑定建立在同样的 context 边界上。
+
+接口与要求：
+
+- 使用 runtime.context.user_id 选择 NOTES。
+- 返回 answer；未找到用户返回“没有笔记”。
+- 身份来自可信调用方；context_schema 本身不执行认证。
+
+初始程序：
+
+```python
+# === SCENARIO: 知识库助手 ===
+# Runtime context 与用户边界
+import json
+
+# --- 已提供：业务数据与上下游组件 ---
+import asyncio
+import json
+from typing import TypedDict, Annotated, Literal
+from operator import add
+from dataclasses import dataclass
+from langgraph.graph import StateGraph, START, END, MessagesState
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command, Send, interrupt, RetryPolicy, CachePolicy
+from langgraph.runtime import Runtime
+from langgraph.store.memory import InMemoryStore
+from langgraph.cache.memory import InMemoryCache
+
+@dataclass
+class Context:
+    user_id: str
+class State(TypedDict):
+    query: str
+    answer: str
+NOTES={"alice":"Alice 的笔记", "bob":"Bob 的笔记"}
+def build_graph():
+    b=StateGraph(State,context_schema=Context)
+    b.add_node("answer",answer_node)
+    b.add_edge(START,"answer")
+    b.add_edge("answer",END)
+    return b.compile()
+
+# --- 你的任务：补全本节组件，保持函数接口 ---
+def answer_node(state: State, runtime: Runtime[Context]):
+    """按要求使用真实 LangGraph API 完成组件。"""
+    raise NotImplementedError("请完成 LangGraph 组件")
+
+# --- 已提供：完整调用流程；补全组件后可直接运行 ---
+def run_scenario():
+    g=build_graph()
+    return {"alice":g.invoke({"query":"graph"},context=Context("alice"))["answer"],"bob":g.invoke({"query":"graph"},context=Context("bob"))["answer"]}
+
+if __name__ == "__main__":
+    print(json.dumps(run_scenario(), ensure_ascii=False, indent=2))
+
+```
+
+自动验收：
+
+**同一图两次调用使用不同 context**
+
+```python
+g=build_graph()
+expect_equal(g.invoke({"query":"x"},context=Context("alice"))["answer"],"Alice 的笔记")
+expect_equal(g.invoke({"query":"x"},context=Context("bob"))["answer"],"Bob 的笔记")
+```
+
+**不存在的用户没有其他用户数据**
+
+```python
+expect_equal(build_graph().invoke({"query":"x"},context=Context("unknown"))["answer"],"没有笔记")
+```
+
+**身份不会成为公开状态字段**
+
+```python
+r=build_graph().invoke({"query":"x"},context=Context("alice"))
+expect_equal(set(r),{"query","answer"})
+```
+
+**完整场景：真实图与上下游得到预期结果**
+
+```python
+expect_equal(run_scenario(), json.loads("{\"alice\":\"Alice 的笔记\",\"bob\":\"Bob 的笔记\"}"))
+```
+
+参考资料：
+
+- [LangGraph · Use the Graph API](https://docs.langchain.com/oss/python/langgraph/use-graph-api) · 官方文档
+- [LangGraph · Stores](https://docs.langchain.com/oss/python/langgraph/stores) · 官方文档
+
+### w8-4 · 区分 updates、values 与流式事件
+
+学习重点：区分 updates、values、消息与自定义事件，让界面知道当前运行状态。
+
+#### 选择事件语义
+
+本节用 graph.stream(..., stream_mode="updates") 收集节点局部更新。values 展示完整状态，模型消息流则用于逐 token 输出。中间更新不代表最终任务已经完成。
+
+#### 输出可消费事件
+
+collect_updates 返回 node 和 update。验收检查 normalize、answer 的顺序和字段，防止把全部事件拍平成最终回答。异常、待审批和最终完成应有各自的界面状态。
+
+#### 继续到当前接口
+
+官方文档还介绍消息、自定义数据与新版事件接口。本课先掌握固定版本的同步 stream，周项目再加入异步消费、断开连接与取消，按需要选择事件形式。
+
+业务场景：界面需要观察节点更新。收集真实图的 updates 事件，保留节点名字和本步增量，而不是把它当作最终完整状态。
+
+调用链：业务输入与真实 LangGraph 运行时 → 你实现：collect_updates → 图输出、快照或事件 → 下游使用
+
+功能关系：这是运行界面接图的入口；messages 是模型消息流，custom 可用于业务进度。
+
+接口与要求：
+
+- 调用 graph.stream(data, stream_mode="updates")。
+- 返回事件列表 [{node, update}]，按运行顺序保留。
+- 节点更新只包含该节点返回的字段；完整状态另用 invoke 或 values。
+
+初始程序：
+
+```python
+# === SCENARIO: 知识库助手 ===
+# 区分 updates、values 与流式事件
+import json
+
+# --- 已提供：业务数据与上下游组件 ---
+import asyncio
+import json
+from typing import TypedDict, Annotated, Literal
+from operator import add
+from dataclasses import dataclass
+from langgraph.graph import StateGraph, START, END, MessagesState
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command, Send, interrupt, RetryPolicy, CachePolicy
+from langgraph.runtime import Runtime
+from langgraph.store.memory import InMemoryStore
+from langgraph.cache.memory import InMemoryCache
+
+class State(TypedDict):
+    query: str
+    answer: str
+def normalize(state):
+    return {"query": state["query"].strip()}
+def answer(state):
+    return {"answer": "笔记：" + state["query"]}
+def build_graph():
+    builder = StateGraph(State)
+    builder.add_node("normalize", normalize)
+    builder.add_node("answer", answer)
+    builder.add_edge(START, "normalize")
+    builder.add_edge("normalize", "answer")
+    builder.add_edge("answer", END)
+    return builder.compile()
+
+# --- 你的任务：补全本节组件，保持函数接口 ---
+def collect_updates(graph, data):
+    """按要求使用真实 LangGraph API 完成组件。"""
+    raise NotImplementedError("请完成 LangGraph 组件")
+
+# --- 已提供：完整调用流程；补全组件后可直接运行 ---
+def run_scenario():
+    return {"events":collect_updates(build_graph(),{"query":" graph "})}
+
+if __name__ == "__main__":
+    print(json.dumps(run_scenario(), ensure_ascii=False, indent=2))
+
+```
+
+自动验收：
+
+**真实节点顺序和更新字段**
+
+```python
+r=collect_updates(build_graph(),{"query":" x "})
+expect_equal(r,[{"node":"normalize","update":{"query":"x"}},{"node":"answer","update":{"answer":"笔记：x"}}])
+```
+
+**没有伪造初始事件或完整状态**
+
+```python
+r=collect_updates(build_graph(),{"query":"a"})
+expect_equal(len(r),2)
+expect_equal(set(r[1]["update"]),{"answer"})
+```
+
+**空文本仍然产生两个节点事件**
+
+```python
+expect_equal(collect_updates(build_graph(),{"query":" "})[1]["update"],{"answer":"笔记："})
+```
+
+**完整场景：真实图与上下游得到预期结果**
+
+```python
+expect_equal(run_scenario(), json.loads("{\"events\":[{\"node\":\"normalize\",\"update\":{\"query\":\"graph\"}},{\"node\":\"answer\",\"update\":{\"answer\":\"笔记：graph\"}}]}"))
+```
+
+参考资料：
+
+- [LangGraph · Streaming](https://docs.langchain.com/oss/python/langgraph/streaming) · 官方文档
+- [LangGraph · Use the Graph API](https://docs.langchain.com/oss/python/langgraph/use-graph-api) · 官方文档
+
+### 本周交付：LG v0.2 · 工具 Agent 与事件流
+
+用 MessagesState、ToolNode 与条件边构建工具 Agent，先用固定模型动作，再可选接入模型。Runtime 注入用户配置，展示节点更新、消息和最终完成状态。
+
+- [ ] 工具请求和结果 ID 对应
+- [ ] 两个用户上下文不串用
+- [ ] 展示 updates 与明确的最终状态
+
+## 第 9 周：持久化、审批与时间旅行
+
+让真实图可以暂停、重启和从历史状态分叉
+
+章节：LearnGraph 4 · 官方 Checkpointers、Interrupts、Time travel
+
+### w9-1 · Checkpointer、thread_id 与历史状态
+
+学习重点：加入 InMemorySaver，用 thread_id 延续状态并检查 checkpoint 历史。
+
+#### 同一线程继续执行
+
+compile 时注入 checkpointer，invoke 配置 configurable.thread_id。total 用加法 reducer，同一线程依次输入 delta=2 和 3 得到 5；另一个线程从自己的状态开始。
+
+#### 直接查看快照
+
+用 get_state 查看 values、next、metadata，用 get_state_history 查看历史。线程 ID 是恢复定位信息；一次请求 ID 与持久会话线程 ID 应有明确关系。
+
+#### 内存后端的范围
+
+InMemorySaver 适合实验，进程退出后不保留数据。保存配置与快照记录，下一节换 SQLite，比较业务行为相同而生命周期不同的两种后端。
+
+业务场景：记录同一会话的计数变化，并观察另一个会话独立的 checkpoint。
+
+调用链：业务输入与真实 LangGraph 运行时 → 你实现：build_graph → 图输出、快照或事件 → 下游使用
+
+功能关系：为审批和 time travel 提供线程快照；下一节将保存器换成 SQLite。
+
+接口与要求：
+
+- compile 使用调用方提供的 checkpointer。
+- 同 thread_id 在状态基础上继续；不同 thread_id 完全独立。
+- 通过 get_state 检查真实快照，内存 saver 不代表跨进程持久化。
+
+初始程序：
+
+```python
+# === SCENARIO: 知识库助手 ===
+# Checkpointer、thread_id 与历史状态
+import json
+
+# --- 已提供：业务数据与上下游组件 ---
+import asyncio
+import json
+from typing import TypedDict, Annotated, Literal
+from operator import add
+from dataclasses import dataclass
+from langgraph.graph import StateGraph, START, END, MessagesState
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command, Send, interrupt, RetryPolicy, CachePolicy
+from langgraph.runtime import Runtime
+from langgraph.store.memory import InMemoryStore
+from langgraph.cache.memory import InMemoryCache
+
+class State(TypedDict):
+    delta: int
+    total: Annotated[int,add]
+def accumulate(state):
+    return {"total":state["delta"]}
+
+# --- 你的任务：补全本节组件，保持函数接口 ---
+def build_graph(checkpointer):
+    """按要求使用真实 LangGraph API 完成组件。"""
+    raise NotImplementedError("请完成 LangGraph 组件")
+
+# --- 已提供：完整调用流程；补全组件后可直接运行 ---
+def run_scenario():
+    g=build_graph(InMemorySaver())
+    cfg={"configurable":{"thread_id":"alice"}}
+    g.invoke({"delta":2},cfg)
+    r=g.invoke({"delta":3},cfg)
+    return {"total":r["total"],"next":list(g.get_state(cfg).next)}
+
+if __name__ == "__main__":
+    print(json.dumps(run_scenario(), ensure_ascii=False, indent=2))
+
+```
+
+自动验收：
+
+**同线程状态继续累积**
+
+```python
+g=build_graph(InMemorySaver())
+c={"configurable":{"thread_id":"a"}}
+g.invoke({"delta":2},c)
+expect_equal(g.invoke({"delta":3},c)["total"],5)
+```
+
+**不同线程各自保存**
+
+```python
+g=build_graph(InMemorySaver())
+a={"configurable":{"thread_id":"a"}}
+b={"configurable":{"thread_id":"b"}}
+g.invoke({"delta":5},a)
+expect_equal(g.invoke({"delta":1},b)["total"],1)
+expect_equal(g.get_state(a).values["total"],5)
+```
+
+**能读取运行历史和结束快照**
+
+```python
+g=build_graph(InMemorySaver())
+c={"configurable":{"thread_id":"history"}}
+g.invoke({"delta":1},c)
+expect_equal(len(list(g.get_state_history(c)))>=3,True)
+expect_equal(g.get_state(c).next,())
+```
+
+**完整场景：真实图与上下游得到预期结果**
+
+```python
+expect_equal(run_scenario(), json.loads("{\"total\":5,\"next\":[]}"))
+```
+
+参考资料：
+
+- [LangGraph · Checkpointers](https://docs.langchain.com/oss/python/langgraph/checkpointers) · 官方文档
+- [LangGraph · Persistence](https://docs.langchain.com/oss/python/langgraph/persistence) · 官方文档
+- [LangGraph · Add memory](https://docs.langchain.com/oss/python/langgraph/add-memory) · 官方文档
+
+### w9-2 · SQLite 保存与重新打开数据库
+
+学习重点：通过 SQLite checkpointer，在关闭并重新打开后端后延续真实线程。
+
+#### 连接有生命周期
+
+SqliteSaver 来自 checkpoint-sqlite 包，使用 from_conn_string 上下文管理器关闭连接。图通过参数接受 saver，使编排逻辑不绑定固定数据库路径。
+
+#### 验证重新打开
+
+首次写 delta=4 后关闭连接，再打开同一文件写 delta=3，结果应为 7。测试使用独立临时文件，不让前一组线程状态污染后一组。周项目再做独立进程重启。
+
+#### 选择生产后端
+
+多人服务按官方后端文档确定数据库、初始化方式和连接管理。SQLite 教学结果能证明保存与重新打开，服务容量需要独立测量与验证。
+
+业务场景：图对象和数据库连接关闭后，重新构建图仍能从文件中的线程状态继续。
+
+调用链：业务输入与真实 LangGraph 运行时 → 你实现：build_graph → 图输出、快照或事件 → 下游使用
+
+功能关系：从内存实验走向持久化；项目验收还要在两个独立 Python 进程间验证恢复。
+
+接口与要求：
+
+- 沿用调用方的 SqliteSaver，不能偷偷创建 InMemorySaver。
+- 关闭连接后重新打开同一个文件，total 必须保留。
+- SQLite 用于本地实验；生产数据库连接、迁移和备份需另行配置。
+
+初始程序：
+
+```python
+# === SCENARIO: 知识库助手 ===
+# SQLite 保存与重新打开数据库
+import json
+
+# --- 已提供：业务数据与上下游组件 ---
+import asyncio
+import json
+from typing import TypedDict, Annotated, Literal
+from operator import add
+from dataclasses import dataclass
+from langgraph.graph import StateGraph, START, END, MessagesState
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command, Send, interrupt, RetryPolicy, CachePolicy
+from langgraph.runtime import Runtime
+from langgraph.store.memory import InMemoryStore
+from langgraph.cache.memory import InMemoryCache
+
+import tempfile
+from pathlib import Path
+from langgraph.checkpoint.sqlite import SqliteSaver
+class State(TypedDict):
+    delta: int
+    total: Annotated[int,add]
+def accumulate(state):
+    return {"total":state["delta"]}
+
+# --- 你的任务：补全本节组件，保持函数接口 ---
+def build_graph(checkpointer):
+    """按要求使用真实 LangGraph API 完成组件。"""
+    raise NotImplementedError("请完成 LangGraph 组件")
+
+# --- 已提供：完整调用流程；补全组件后可直接运行 ---
+def run_scenario():
+    with tempfile.TemporaryDirectory() as folder:
+        path=str(Path(folder)/"checkpoints.sqlite")
+        cfg={"configurable":{"thread_id":"resume"}}
+        with SqliteSaver.from_conn_string(path) as saver:
+            build_graph(saver).invoke({"delta":4},cfg)
+        with SqliteSaver.from_conn_string(path) as saver:
+            return {"total":build_graph(saver).invoke({"delta":3},cfg)["total"]}
+
+if __name__ == "__main__":
+    print(json.dumps(run_scenario(), ensure_ascii=False, indent=2))
+
+```
+
+自动验收：
+
+**重新打开文件后继续运行**
+
+```python
+with tempfile.TemporaryDirectory() as folder:
+    p=str(Path(folder)/"a.db")
+    c={"configurable":{"thread_id":"a"}}
+    with SqliteSaver.from_conn_string(p) as s:
+        build_graph(s).invoke({"delta":6},c)
+    with SqliteSaver.from_conn_string(p) as s:
+        expect_equal(build_graph(s).invoke({"delta":2},c)["total"],8)
+```
+
+**保存器能独立检索 checkpoint**
+
+```python
+with SqliteSaver.from_conn_string(":memory:") as s:
+    c={"configurable":{"thread_id":"b"}}
+    build_graph(s).invoke({"delta":3},c)
+    expect_equal(s.get_tuple(c) is not None,True)
+```
+
+**另一个文件没有旧状态**
+
+```python
+with SqliteSaver.from_conn_string(":memory:") as s:
+    expect_equal(build_graph(s).invoke({"delta":1},{"configurable":{"thread_id":"new"}})["total"],1)
+```
+
+**完整场景：真实图与上下游得到预期结果**
+
+```python
+expect_equal(run_scenario(), json.loads("{\"total\":7}"))
+```
+
+参考资料：
+
+- [LangGraph · Checkpointers](https://docs.langchain.com/oss/python/langgraph/checkpointers) · 官方文档
+- [LangGraph · Add memory](https://docs.langchain.com/oss/python/langgraph/add-memory) · 官方文档
+- [LangGraph · Persistence](https://docs.langchain.com/oss/python/langgraph/persistence) · 官方文档
+
+### w9-3 · interrupt、批准拒绝与 Command 恢复
+
+学习重点：用 interrupt 暂停审阅，用 Command 恢复经过校验的批准、拒绝或编辑。
+
+#### 暂停在写入之前
+
+review 把 draft 交给 interrupt，首次执行返回中断信息，待批准写入为空。恢复用同一线程和 Command(resume=...)，提交 approved 与编辑后的 draft。
+
+#### 校验决策并保留证据
+
+approved 必须为布尔值，字符串 "yes" 不合法。批准后 commit 使用编辑内容，拒绝直接结束。验收分别检查暂停、编辑、拒绝与非法恢复输入。
+
+#### 恢复会重放节点
+
+中断节点可能从开头重新执行。中断前代码应能重复，外部写入使用业务幂等键或事务，记录决策与实际内容，不能靠按钮只点击一次保证没有重复。
+
+业务场景：保存知识前让图暂停。批准后写入编辑后的文本，拒绝时结束且不写入。
+
+调用链：业务输入与真实 LangGraph 运行时 → 你实现：review → 图输出、快照或事件 → 下游使用
+
+功能关系：中断节点会重放；生产写入还需业务幂等键，不能依赖暂停位置保证恰好一次。
+
+接口与要求：
+
+- 用 interrupt({"draft":...}) 请求人工决策。
+- 恢复值必须是含布尔 approved 的字典，否则抛 ValueError；可选 draft 用于编辑。
+- review 不执行写入；恢复调用使用同 thread_id 和 Command(resume=...)。
+
+初始程序：
+
+```python
+# === SCENARIO: 知识库助手 ===
+# interrupt、批准拒绝与 Command 恢复
+import json
+
+# --- 已提供：业务数据与上下游组件 ---
+import asyncio
+import json
+from typing import TypedDict, Annotated, Literal
+from operator import add
+from dataclasses import dataclass
+from langgraph.graph import StateGraph, START, END, MessagesState
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command, Send, interrupt, RetryPolicy, CachePolicy
+from langgraph.runtime import Runtime
+from langgraph.store.memory import InMemoryStore
+from langgraph.cache.memory import InMemoryCache
+
+class State(TypedDict):
+    draft: str
+    approved: bool
+    writes: Annotated[list[str],add]
+def commit(state):
+    return {"writes":[state["draft"]]}
+def build_graph():
+    b=StateGraph(State)
+    b.add_node("review",review)
+    b.add_node("commit",commit)
+    b.add_edge(START,"review")
+    b.add_conditional_edges("review",lambda s:"commit" if s["approved"] else END,{"commit":"commit",END:END})
+    b.add_edge("commit",END)
+    return b.compile(checkpointer=InMemorySaver())
+
+# --- 你的任务：补全本节组件，保持函数接口 ---
+def review(state: State):
+    """按要求使用真实 LangGraph API 完成组件。"""
+    raise NotImplementedError("请完成 LangGraph 组件")
+
+# --- 已提供：完整调用流程；补全组件后可直接运行 ---
+def run_scenario():
+    g=build_graph()
+    c={"configurable":{"thread_id":"approval"}}
+    pause=g.invoke({"draft":"旧文本"},c)
+    resumed=g.invoke(Command(resume={"approved":True,"draft":"修正文本"}),c)
+    return {"paused":bool(pause.get("__interrupt__")),"writes":resumed["writes"]}
+
+if __name__ == "__main__":
+    print(json.dumps(run_scenario(), ensure_ascii=False, indent=2))
+
+```
+
+自动验收：
+
+**审批前不写，批准后用编辑文本**
+
+```python
+g=build_graph()
+c={"configurable":{"thread_id":"a"}}
+r=g.invoke({"draft":"old"},c)
+expect_equal(bool(r.get("__interrupt__")),True)
+expect_equal(g.get_state(c).values["writes"],[])
+r=g.invoke(Command(resume={"approved":True,"draft":"new"}),c)
+expect_equal(r["writes"],["new"])
+```
+
+**拒绝不会执行写入节点**
+
+```python
+g=build_graph()
+c={"configurable":{"thread_id":"b"}}
+g.invoke({"draft":"x"},c)
+r=g.invoke(Command(resume={"approved":False}),c)
+expect_equal(r["writes"],[])
+expect_equal(g.get_state(c).next,())
+```
+
+**恢复值也有边界校验**
+
+```python
+g=build_graph()
+c={"configurable":{"thread_id":"c"}}
+g.invoke({"draft":"x"},c)
+expect_raises(ValueError,lambda:g.invoke(Command(resume={"approved":"yes"}),c))
+```
+
+**完整场景：真实图与上下游得到预期结果**
+
+```python
+expect_equal(run_scenario(), json.loads("{\"paused\":true,\"writes\":[\"修正文本\"]}"))
+```
+
+参考资料：
+
+- [LangGraph · Interrupts](https://docs.langchain.com/oss/python/langgraph/interrupts) · 官方文档
+- [LearnGraph · 4.2 动态中断](https://www.learngraph.online/LearnGraph%201.X/module-4-human-in-the-loop/4.2%20Dynamic%20Breakpoints.html) · 中文教程
+- [LearnGraph · 11.5 Command](https://www.learngraph.online/LearnGraph%201.X/module-11-subgraph-mermaid-mcp-agent-node-tool/11.5%20Command.html) · 中文教程
+
+### w9-4 · Time travel、update_state 与分叉
+
+学习重点：从历史 checkpoint 更新状态并分叉，保留旧执行结果。
+
+#### 选择正确的分叉点
+
+在 get_state_history 找到 next 指向 answer 的快照，保留它的 config。update_state 写 new_query，as_node 指明更新来自 normalize，再从返回配置继续执行。
+
+#### 历史不会自动消失
+
+比较原完成结果和新分支，旧查询的快照仍存在。后续节点重放可能再次发起网络请求或外部写入，需要记录成本并保护副作用。
+
+#### 让调试可解释
+
+在同一检索快照上尝试两种回答策略，保存 checkpoint_id 和结果差异。周项目展示历史分支和恢复，避免随意改当前线程后无法解释实验条件。
+
+业务场景：在回答节点前的历史快照上修改查询，运行一个新分支，并保留原始完成快照供比较。
+
+调用链：业务输入与真实 LangGraph 运行时 → 你实现：fork_answer → 图输出、快照或事件 → 下游使用
+
+功能关系：分叉用于比较替代路径；重放也可能再次触发模型调用或副作用，需要记录实验边界。
+
+接口与要求：
+
+- 从 get_state_history 找到 next 包含 answer 的快照。
+- 在这个历史 config 上 update_state({"query":query}, as_node="normalize")。
+- invoke(None, 新 config) 继续执行；返回新分支的完整 values，不能修改旧快照。
+
+初始程序：
+
+```python
+# === SCENARIO: 知识库助手 ===
+# Time travel、update_state 与分叉
+import json
+
+# --- 已提供：业务数据与上下游组件 ---
+import asyncio
+import json
+from typing import TypedDict, Annotated, Literal
+from operator import add
+from dataclasses import dataclass
+from langgraph.graph import StateGraph, START, END, MessagesState
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command, Send, interrupt, RetryPolicy, CachePolicy
+from langgraph.runtime import Runtime
+from langgraph.store.memory import InMemoryStore
+from langgraph.cache.memory import InMemoryCache
+
+class State(TypedDict):
+    query: str
+    answer: str
+def normalize(state):
+    return {"query": state["query"].strip()}
+def answer(state):
+    return {"answer": "笔记：" + state["query"]}
+def build_graph():
+    builder = StateGraph(State)
+    builder.add_node("normalize", normalize)
+    builder.add_node("answer", answer)
+    builder.add_edge(START, "normalize")
+    builder.add_edge("normalize", "answer")
+    builder.add_edge("answer", END)
+    return builder.compile(checkpointer=InMemorySaver())
+
+# --- 你的任务：补全本节组件，保持函数接口 ---
+def fork_answer(graph, config, query):
+    """按要求使用真实 LangGraph API 完成组件。"""
+    raise NotImplementedError("请完成 LangGraph 组件")
+
+# --- 已提供：完整调用流程；补全组件后可直接运行 ---
+def run_scenario():
+    g=build_graph()
+    c={"configurable":{"thread_id":"fork"}}
+    g.invoke({"query":"original"},c)
+    original=g.get_state(c)
+    new=fork_answer(g,c,"alternative")
+    return {"original":g.get_state(original.config).values["answer"],"fork":new["answer"]}
+
+if __name__ == "__main__":
+    print(json.dumps(run_scenario(), ensure_ascii=False, indent=2))
+
+```
+
+自动验收：
+
+**分支使用新查询，旧快照保留**
+
+```python
+g=build_graph()
+c={"configurable":{"thread_id":"a"}}
+g.invoke({"query":"old"},c)
+old=g.get_state(c)
+expect_equal(fork_answer(g,c,"new")["answer"],"笔记：new")
+expect_equal(g.get_state(old.config).values["answer"],"笔记：old")
+```
+
+**修改状态产生真实的新历史**
+
+```python
+g=build_graph()
+c={"configurable":{"thread_id":"b"}}
+g.invoke({"query":"x"},c)
+before=len(list(g.get_state_history(c)))
+fork_answer(g,c,"y")
+expect_equal(len(list(g.get_state_history(c)))>before,True)
+```
+
+**新分支继续运行回答节点**
+
+```python
+g=build_graph()
+c={"configurable":{"thread_id":"c"}}
+g.invoke({"query":"a"},c)
+r=fork_answer(g,c,"")
+expect_equal(r["answer"],"笔记：")
+expect_equal(g.get_state(c).next,())
+```
+
+**完整场景：真实图与上下游得到预期结果**
+
+```python
+expect_equal(run_scenario(), json.loads("{\"original\":\"笔记：original\",\"fork\":\"笔记：alternative\"}"))
+```
+
+参考资料：
+
+- [LangGraph · Time travel](https://docs.langchain.com/oss/python/langgraph/use-time-travel) · 官方文档
+- [LearnGraph · 4.5 Time Travel](https://www.learngraph.online/LearnGraph%201.X/module-4-human-in-the-loop/4.5%20Time%20Travel.html) · 中文教程
+- [LangGraph · Checkpointers](https://docs.langchain.com/oss/python/langgraph/checkpointers) · 官方文档
+
+### 本周交付：LG v0.3 · 可恢复的审批助手
+
+把内存 checkpoint 换成持久化后端，实现批准、拒绝与编辑。以独立进程重启验证恢复，从历史快照创建新回答分支，为外部写入加入幂等保护。
+
+- [ ] 独立进程重启后延续线程
+- [ ] 审批前没有待批准写入
+- [ ] 历史快照保留且副作用有幂等键
+
+## 第 10 周：并行、动态分发与子图
+
+掌握 super-step、Send、状态转换与父图交接
+
+章节：LearnGraph 5 / 11.5 · 官方 Graph API、Subgraphs
+
+### w10-1 · 并行分支、reducer 与汇合屏障
+
+学习重点：理解 super-step 并行、共享字段 reducer 与多个分支的汇合。
+
+#### 独立分支共享规则
+
+lookup 与 policy 从 START 启动，都向 flags 写新增记录，用追加 reducer 合并。结果需要显式顺序时进行排序，不依赖任务完成速度。
+
+#### 汇合依赖明确表达
+
+add_edge(["lookup","policy"],"join") 表示等待两个前置节点。测试两份贡献、join 的答案与执行次数，避免先完成的分支过早触发业务写入。
+
+#### 观察故障与恢复
+
+阅读 checkpoint 的 pending writes，再注入一个分支故障观察恢复。super-step 是批次执行边界；性能收益用并发计数和耗时证明，不能只根据图形判断。
+
+业务场景：同时检查证据与权限，等两个分支完成后再生成回答。不能因为其中一个先结束就提前汇总。
+
+调用链：业务输入与真实 LangGraph 运行时 → 你实现：build_graph → 图输出、快照或事件 → 下游使用
+
+功能关系：固定分支后再学习 Send 动态分发；任何多个写入都要明确合并规则。
+
+接口与要求：
+
+- START 同时连接 lookup 和 policy。
+- add_edge(["lookup", "policy"], "merge") 等待两个分支。
+- 共享 flags 使用 reducer；最终按字母排序，避免依赖并行完成顺序。
+
+初始程序：
+
+```python
+# === SCENARIO: 知识库助手 ===
+# 并行分支、reducer 与汇合屏障
+import json
+
+# --- 已提供：业务数据与上下游组件 ---
+import asyncio
+import json
+from typing import TypedDict, Annotated, Literal
+from operator import add
+from dataclasses import dataclass
+from langgraph.graph import StateGraph, START, END, MessagesState
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command, Send, interrupt, RetryPolicy, CachePolicy
+from langgraph.runtime import Runtime
+from langgraph.store.memory import InMemoryStore
+from langgraph.cache.memory import InMemoryCache
+
+class State(TypedDict):
+    flags: Annotated[list[str],add]
+    answer: str
+def lookup(state):
+    return {"flags":["evidence"]}
+def policy(state):
+    return {"flags":["allowed"]}
+def merge(state):
+    return {"answer":" + ".join(sorted(state["flags"]))}
+
+# --- 你的任务：补全本节组件，保持函数接口 ---
+def build_graph():
+    """按要求使用真实 LangGraph API 完成组件。"""
+    raise NotImplementedError("请完成 LangGraph 组件")
+
+# --- 已提供：完整调用流程；补全组件后可直接运行 ---
+def run_scenario():
+    return build_graph().invoke({"flags":[]})
+
+if __name__ == "__main__":
+    print(json.dumps(run_scenario(), ensure_ascii=False, indent=2))
+
+```
+
+自动验收：
+
+**汇总看到两个分支的结果**
+
+```python
+r=build_graph().invoke({"flags":[]})
+expect_equal(sorted(r["flags"]),["allowed","evidence"])
+expect_equal(r["answer"],"allowed + evidence")
+```
+
+**汇总只执行一次**
+
+```python
+events=list(build_graph().stream({"flags":[]},stream_mode="updates"))
+expect_equal(sum("merge" in e for e in events),1)
+```
+
+**保留调用方输入日志**
+
+```python
+r=build_graph().invoke({"flags":["seed"]})
+expect_equal(r["answer"],"allowed + evidence + seed")
+```
+
+**完整场景：真实图与上下游得到预期结果**
+
+```python
+expect_equal(run_scenario(), json.loads("{\"flags\":[\"evidence\",\"allowed\"],\"answer\":\"allowed + evidence\"}"))
+```
+
+参考资料：
+
+- [LangGraph · Use the Graph API](https://docs.langchain.com/oss/python/langgraph/use-graph-api) · 官方文档
+- [LearnGraph · 5.1 Parallelization](https://www.learngraph.online/LearnGraph%201.X/module-5-advanced-patterns/5.1%20Parallelization.html) · 中文教程
+- [LangGraph · Workflows & agents](https://docs.langchain.com/oss/python/langgraph/workflows-agents) · 官方文档
+
+### w10-2 · Send 动态 Map-Reduce
+
+学习重点：使用 Send 动态分发工作项，通过 reducer 汇总为稳定输出。
+
+#### 工作项数量来自输入
+
+每个文档生成 Send("measure", {index,text})，工作节点只处理自己的输入。results 累积后由 summarize 按原 index 排序，完成速度不会改变业务输出顺序。
+
+#### 空任务也有出口
+
+空列表直接进入 summarize，返回空结果。测试空文本、多文档和重复文本，用稳定 index 区分内容相同的任务，确认没有丢失或重复。
+
+#### 扩展到批量检索
+
+将 measure 换成检索或评审，记录任务 ID 并限制外部服务并发。动态分发解决规模变化，去重、预算和部分失败策略仍需要应用显式定义。
+
+业务场景：输入文档数量不固定。为每篇文档分发独立任务，合并长度结果，空列表也能正常结束。
+
+调用链：业务输入与真实 LangGraph 运行时 → 你实现：build_graph → 图输出、快照或事件 → 下游使用
+
+功能关系：动态任务独立输入与父图共享输出是 Send 的核心；研究助手可把测量替换为检索。
+
+接口与要求：
+
+- 使用 Send("measure", {index, text}) 为每篇文档构建任务输入。
+- measure 的 results 用 reducer 合并，并连接 summarize。
+- 空 documents 直接运行 summarize；结果恢复输入顺序。
+
+初始程序：
+
+```python
+# === SCENARIO: 知识库助手 ===
+# Send 动态 Map-Reduce
+import json
+
+# --- 已提供：业务数据与上下游组件 ---
+import asyncio
+import json
+from typing import TypedDict, Annotated, Literal
+from operator import add
+from dataclasses import dataclass
+from langgraph.graph import StateGraph, START, END, MessagesState
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command, Send, interrupt, RetryPolicy, CachePolicy
+from langgraph.runtime import Runtime
+from langgraph.store.memory import InMemoryStore
+from langgraph.cache.memory import InMemoryCache
+
+class State(TypedDict):
+    documents: list[str]
+    results: Annotated[list[tuple[int,int]],add]
+    lengths: list[int]
+def measure(state):
+    return {"results":[(state["index"],len(state["text"]))]}
+def summarize(state):
+    return {"lengths":[n for _,n in sorted(state.get("results",[]))]}
+
+# --- 你的任务：补全本节组件，保持函数接口 ---
+def build_graph():
+    """按要求使用真实 LangGraph API 完成组件。"""
+    raise NotImplementedError("请完成 LangGraph 组件")
+
+# --- 已提供：完整调用流程；补全组件后可直接运行 ---
+def run_scenario():
+    r=build_graph().invoke({"documents":["graph","","state"],"results":[]})
+    return {"lengths":r["lengths"]}
+
+if __name__ == "__main__":
+    print(json.dumps(run_scenario(), ensure_ascii=False, indent=2))
+
+```
+
+自动验收：
+
+**任意数量任务返回输入顺序**
+
+```python
+r=build_graph().invoke({"documents":["aaa","b","cc"],"results":[]})
+expect_equal(r["lengths"],[3,1,2])
+```
+
+**空任务集合也能结束**
+
+```python
+r=build_graph().invoke({"documents":[],"results":[]})
+expect_equal(r["lengths"],[])
+```
+
+**每篇文档只有一个结果**
+
+```python
+r=build_graph().invoke({"documents":["x"]*5,"results":[]})
+expect_equal(len(r["results"]),5)
+expect_equal(sorted(i for i,_ in r["results"]),list(range(5)))
+```
+
+**完整场景：真实图与上下游得到预期结果**
+
+```python
+expect_equal(run_scenario(), json.loads("{\"lengths\":[5,0,5]}"))
+```
+
+参考资料：
+
+- [LangGraph · Use the Graph API](https://docs.langchain.com/oss/python/langgraph/use-graph-api) · 官方文档
+- [LearnGraph · 5.3 Map-Reduce](https://www.learngraph.online/LearnGraph%201.X/module-5-advanced-patterns/5.3%20Map-Reduce.html) · 中文教程
+
+### w10-3 · 父子图不同 schema 的显式转换
+
+学习重点：接入真实编译子图，在父图与子图不同 schema 之间转换字段。
+
+#### 两个图有不同字段
+
+父图使用 topic/result，子图使用 question/answer。包装节点转换输入、调用 child.invoke，再转换输出，父图无需了解子图内部节点。
+
+#### 验证子图可替换
+
+验收注入不同回答前缀的 child，确认真实调用并返回正确结果。子图内部字段不应混入父图公开输出；边界同时约束数据与职责。
+
+#### 继续学习子图恢复
+
+阅读 checkpointer 继承与子图状态查看方式。周项目加一次子图中断，说明父图怎样暂停与恢复，以及每次独立调用和多轮会话的持久化需求。
+
+业务场景：检索子图接受 question、返回 answer，父图接受 topic、返回 result。用节点包装器完成边界映射。
+
+调用链：业务输入与真实 LangGraph 运行时 → 你实现：build_graph → 图输出、快照或事件 → 下游使用
+
+功能关系：封装独立流程；有共同字段时可以直接把已编译子图作为节点。
+
+接口与要求：
+
+- 父图 delegate 节点调用传入的 child.invoke({"question": topic})。
+- 只把 child 的 answer 写到父图 result，不扩散子图内部字段。
+- 同一个父图工厂应支持不同的子图实现。
+
+初始程序：
+
+```python
+# === SCENARIO: 知识库助手 ===
+# 父子图不同 schema 的显式转换
+import json
+
+# --- 已提供：业务数据与上下游组件 ---
+import asyncio
+import json
+from typing import TypedDict, Annotated, Literal
+from operator import add
+from dataclasses import dataclass
+from langgraph.graph import StateGraph, START, END, MessagesState
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command, Send, interrupt, RetryPolicy, CachePolicy
+from langgraph.runtime import Runtime
+from langgraph.store.memory import InMemoryStore
+from langgraph.cache.memory import InMemoryCache
+
+class ChildState(TypedDict):
+    question: str
+    answer: str
+class State(TypedDict):
+    topic: str
+    result: str
+def make_child(prefix="child:"):
+    b=StateGraph(ChildState)
+    b.add_node("answer",lambda s:{"answer":prefix+s["question"]})
+    b.add_edge(START,"answer")
+    b.add_edge("answer",END)
+    return b.compile()
+
+# --- 你的任务：补全本节组件，保持函数接口 ---
+def build_graph(child):
+    """按要求使用真实 LangGraph API 完成组件。"""
+    raise NotImplementedError("请完成 LangGraph 组件")
+
+# --- 已提供：完整调用流程；补全组件后可直接运行 ---
+def run_scenario():
+    return build_graph(make_child()).invoke({"topic":"checkpoint"})
+
+if __name__ == "__main__":
+    print(json.dumps(run_scenario(), ensure_ascii=False, indent=2))
+
+```
+
+自动验收：
+
+**转换父图输入到子图输入**
+
+```python
+r=build_graph(make_child()).invoke({"topic":"x"})
+expect_equal(r,{"topic":"x","result":"child:x"})
+```
+
+**尊重调用方提供的子图**
+
+```python
+r=build_graph(make_child("other:")).invoke({"topic":"y"})
+expect_equal(r["result"],"other:y")
+```
+
+**输出没有子图字段泄露**
+
+```python
+r=build_graph(make_child()).invoke({"topic":""})
+expect_equal(set(r),{"topic","result"})
+```
+
+**完整场景：真实图与上下游得到预期结果**
+
+```python
+expect_equal(run_scenario(), json.loads("{\"topic\":\"checkpoint\",\"result\":\"child:checkpoint\"}"))
+```
+
+参考资料：
+
+- [LangGraph · Subgraphs](https://docs.langchain.com/oss/python/langgraph/use-subgraphs) · 官方文档
+- [LearnGraph · 5.2 子图](https://www.learngraph.online/LearnGraph%201.X/module-5-advanced-patterns/5.2%20Sub-Graph.html) · 中文教程
+- [LangGraph · Use the Graph API](https://docs.langchain.com/oss/python/langgraph/use-graph-api) · 官方文档
+
+### w10-4 · Command.PARENT 跨图交接
+
+学习重点：通过 Command.PARENT 更新共享状态，把控制权交回父图。
+
+#### 同时更新与跳转
+
+handoff 返回 Command(update=...,goto="finish",graph=Command.PARENT)，父图 finish 处理结果。子图注册时明确本图目标，父图跳转由 Command 指定，避免多条出口造成重复执行。
+
+#### 共享字段的合并
+
+父子图 notes 使用明确 reducer。先检查返回 Command 的目标与更新，再运行真实父子图，确认子图记录只出现一次、最终答案由父图生成。
+
+#### 形成交接协议
+
+多 Agent 交接需要任务、证据与状态，不能无限转发历史。限制交接次数并定义终止条件，用实际质量和成本比较单图方案。
+
+业务场景：子图完成检索后，把结果交给父图 finish 节点。用 Command 同时更新共享状态并改变执行位置。
+
+调用链：业务输入与真实 LangGraph 运行时 → 你实现：handoff → 图输出、快照或事件 → 下游使用
+
+功能关系：这是多 Agent 的交接机制；传递可验证数据和权限边界比角色名字更重要。
+
+接口与要求：
+
+- 返回 Command(update={"notes":[query]}, goto="finish", graph=Command.PARENT)。
+- 父图共享 notes 已定义 reducer。
+- 不要额外增加 delegate → finish 静态边，避免混用两条路由。
+
+初始程序：
+
+```python
+# === SCENARIO: 知识库助手 ===
+# Command.PARENT 跨图交接
+import json
+
+# --- 已提供：业务数据与上下游组件 ---
+import asyncio
+import json
+from typing import TypedDict, Annotated, Literal
+from operator import add
+from dataclasses import dataclass
+from langgraph.graph import StateGraph, START, END, MessagesState
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command, Send, interrupt, RetryPolicy, CachePolicy
+from langgraph.runtime import Runtime
+from langgraph.store.memory import InMemoryStore
+from langgraph.cache.memory import InMemoryCache
+
+class State(TypedDict):
+    query: str
+    notes: Annotated[list[str],add]
+    answer: str
+def finish(state):
+    return {"answer":"|".join(state["notes"])}
+def build_graph():
+    child=StateGraph(State)
+    child.add_node("handoff",handoff, destinations=(END,))
+    child.add_edge(START,"handoff")
+    parent=StateGraph(State)
+    parent.add_node("delegate",child.compile())
+    parent.add_node("finish",finish)
+    parent.add_edge(START,"delegate")
+    parent.add_edge("finish",END)
+    return parent.compile()
+
+# --- 你的任务：补全本节组件，保持函数接口 ---
+def handoff(state) -> Command[Literal["finish"]]:
+    """按要求使用真实 LangGraph API 完成组件。"""
+    raise NotImplementedError("请完成 LangGraph 组件")
+
+# --- 已提供：完整调用流程；补全组件后可直接运行 ---
+def run_scenario():
+    return build_graph().invoke({"query":"graph","notes":[]})
+
+if __name__ == "__main__":
+    print(json.dumps(run_scenario(), ensure_ascii=False, indent=2))
+
+```
+
+自动验收：
+
+**返回的是父图路由 Command**
+
+```python
+cmd=handoff({"query":"x"})
+expect_equal(isinstance(cmd,Command),True)
+expect_equal((cmd.goto,cmd.graph),("finish",Command.PARENT))
+```
+
+**子图更新交给父图 finish**
+
+```python
+r=build_graph().invoke({"query":"x","notes":["seed"]})
+expect_equal(r["answer"],"seed|x")
+```
+
+**父图共享字段不会重复合并**
+
+```python
+r=build_graph().invoke({"query":"y","notes":[]})
+expect_equal(r["notes"],["y"])
+```
+
+**完整场景：真实图与上下游得到预期结果**
+
+```python
+expect_equal(run_scenario(), json.loads("{\"query\":\"graph\",\"notes\":[\"graph\"],\"answer\":\"graph\"}"))
+```
+
+参考资料：
+
+- [LangGraph · Use the Graph API](https://docs.langchain.com/oss/python/langgraph/use-graph-api) · 官方文档
+- [LearnGraph · 11.5 Command](https://www.learngraph.online/LearnGraph%201.X/module-11-subgraph-mermaid-mcp-agent-node-tool/11.5%20Command.html) · 中文教程
+- [LangGraph · Subgraphs](https://docs.langchain.com/oss/python/langgraph/use-subgraphs) · 官方文档
+
+### 本周交付：LG v0.4 · 可组合的并行流水线
+
+并行检索和策略检查，用 Send 分发文档任务。将审阅封装为不同 schema 子图，以边界转换或 Command.PARENT 回传结果，检查汇合、顺序和故障路径。
+
+- [ ] 并行共享字段有 reducer
+- [ ] 空任务和乱序完成汇总稳定
+- [ ] 真实子图可替换且边界有测试
+
+## 第 11 周：函数式、异步与长期记忆
+
+组织可恢复任务，控制异步 I/O 并隔离用户记忆
+
+章节：LearnGraph 6 · 官方 Functional API、Stores、异步图
+
+### w11-1 · Functional API：entrypoint 与 task
+
+学习重点：用 entrypoint/task 组织函数式工作流，观察实际任务结果与事件。
+
+#### 普通函数也能组织流程
+
+清理与检索定义为 @task，在 @entrypoint 内提交任务并取 .result()。Functional API 与 Graph API 都使用图运行时，用不同代码组织方式表达执行。
+
+#### 给任务清楚边界
+
+invoke 检查结果，stream 检查任务名。可复用或有副作用的步骤需要独立边界；不要把所有工作藏进一个大函数。异步调用使用相应接口而非阻塞取结果。
+
+#### 选择合适表达方式
+
+复杂分支可以用图式表达，已有命令式逻辑可尝试函数式表达。把同一个流程各写一次，对比测试、调试和暂停能力，而不是只比较行数。
+
+业务场景：已有 Python 调用链无需重写成显式图。使用 task 包装清理与检索，用 entrypoint 管理工作流。
+
+调用链：业务输入与真实 LangGraph 运行时 → 你实现：build_workflow → 图输出、快照或事件 → 下游使用
+
+功能关系：Graph API 和 Functional API 共享运行时；选择适合现有项目控制流的表达方式。
+
+接口与要求：
+
+- 函数返回 @entrypoint() 装饰后的工作流对象。
+- 调用 normalize_task(...).result() 后，把结果传给 retrieve_task(...).result()。
+- 保留 task 边界，为后面的持久执行和恢复做准备。
+
+初始程序：
+
+```python
+# === SCENARIO: 知识库助手 ===
+# Functional API：entrypoint 与 task
+import json
+
+# --- 已提供：业务数据与上下游组件 ---
+import asyncio
+import json
+from typing import TypedDict, Annotated, Literal
+from operator import add
+from dataclasses import dataclass
+from langgraph.graph import StateGraph, START, END, MessagesState
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command, Send, interrupt, RetryPolicy, CachePolicy
+from langgraph.runtime import Runtime
+from langgraph.store.memory import InMemoryStore
+from langgraph.cache.memory import InMemoryCache
+
+from langgraph.func import entrypoint, task
+from langgraph.pregel import Pregel
+@task
+def normalize_task(query):
+    return query.strip()
+@task
+def retrieve_task(query):
+    return {"answer":"task:"+query}
+
+# --- 你的任务：补全本节组件，保持函数接口 ---
+def build_workflow():
+    """按要求使用真实 LangGraph API 完成组件。"""
+    raise NotImplementedError("请完成 LangGraph 组件")
+
+# --- 已提供：完整调用流程；补全组件后可直接运行 ---
+def run_scenario():
+    return build_workflow().invoke(" graph ")
+
+if __name__ == "__main__":
+    print(json.dumps(run_scenario(), ensure_ascii=False, indent=2))
+
+```
+
+自动验收：
+
+**返回真实 Pregel 工作流**
+
+```python
+w=build_workflow()
+expect_equal(isinstance(w,Pregel),True)
+expect_equal(w.invoke(" a "),{"answer":"task:a"})
+```
+
+**空文本和重复调用独立**
+
+```python
+w=build_workflow()
+expect_equal(w.invoke(" "),{"answer":"task:"})
+expect_equal(w.invoke("b"),{"answer":"task:b"})
+```
+
+**task 事件能被流式观察**
+
+```python
+events=list(build_workflow().stream("x",stream_mode="updates"))
+expect_equal(any("normalize_task" in e for e in events),True)
+expect_equal(any("retrieve_task" in e for e in events),True)
+```
+
+**完整场景：真实图与上下游得到预期结果**
+
+```python
+expect_equal(run_scenario(), json.loads("{\"answer\":\"task:graph\"}"))
+```
+
+参考资料：
+
+- [LangGraph · Functional API](https://docs.langchain.com/oss/python/langgraph/functional-api) · 官方文档
+- [LangChain Academy · 官方课程源码](https://github.com/langchain-ai/langchain-academy) · 专业课程
+
+### w11-2 · 异步节点、ainvoke 与并发 I/O
+
+学习重点：编写异步节点，用 ainvoke 与 asyncio.gather 并发等待独立 I/O。
+
+#### 依赖和节点一起异步
+
+fetch 是异步函数，节点用 asyncio.gather，外部 await graph.ainvoke。避免在异步节点里调用阻塞网络库；同步执行和异步执行应保持清楚的入口。
+
+#### 通过行为验证并发
+
+测试活动调用的峰值为 2，不仅依赖波动较大的耗时。空列表返回空结果；fetch 的 ValueError 应传播，不能静默改成成功输出。
+
+#### 给 I/O 设置边界
+
+正式服务用信号量限制并发，配置超时并处理取消。有事件循环的应用直接 await，本地独立脚本才使用 asyncio.run 启动顶层循环。
+
+业务场景：同一节点要查询多个数据源。让异步图节点并发等待，并验证有异常时运行不会被误报成功。
+
+调用链：业务输入与真实 LangGraph 运行时 → 你实现：build_graph → 图输出、快照或事件 → 下游使用
+
+功能关系：网络客户端必须支持异步；下一阶段把重试、并发限制和超时作为独立策略。
+
+接口与要求：
+
+- 节点使用 async def，并 await asyncio.gather 处理所有 queries。
+- 返回编译后的图，通过 await graph.ainvoke 调用。
+- 保持输入顺序；空输入返回空列表；请求异常原样抛出。
+
+初始程序：
+
+```python
+# === SCENARIO: 知识库助手 ===
+# 异步节点、ainvoke 与并发 I/O
+import json
+
+# --- 已提供：业务数据与上下游组件 ---
+import asyncio
+import json
+from typing import TypedDict, Annotated, Literal
+from operator import add
+from dataclasses import dataclass
+from langgraph.graph import StateGraph, START, END, MessagesState
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command, Send, interrupt, RetryPolicy, CachePolicy
+from langgraph.runtime import Runtime
+from langgraph.store.memory import InMemoryStore
+from langgraph.cache.memory import InMemoryCache
+
+class State(TypedDict):
+    queries: list[str]
+    documents: list[str]
+async def example_fetch(query):
+    await asyncio.sleep(0)
+    return "doc:"+query
+
+# --- 你的任务：补全本节组件，保持函数接口 ---
+def build_graph(fetch):
+    """按要求使用真实 LangGraph API 完成组件。"""
+    raise NotImplementedError("请完成 LangGraph 组件")
+
+# --- 已提供：完整调用流程；补全组件后可直接运行 ---
+def run_scenario():
+    r=asyncio.run(build_graph(example_fetch).ainvoke({"queries":["a","b"]}))
+    return {"documents":r["documents"]}
+
+if __name__ == "__main__":
+    print(json.dumps(run_scenario(), ensure_ascii=False, indent=2))
+
+```
+
+自动验收：
+
+**实际存在重叠的异步请求**
+
+```python
+async def check():
+    active=0
+    peak=0
+    async def fetch(q):
+        nonlocal active,peak
+        active+=1
+        peak=max(peak,active)
+        await asyncio.sleep(0.01)
+        active-=1
+        return q
+    r=await build_graph(fetch).ainvoke({"queries":["a","b","c"]})
+    expect_equal(peak>=2,True)
+    expect_equal(r["documents"],["a","b","c"])
+asyncio.run(check())
+```
+
+**空输入不调用 fetch**
+
+```python
+expect_equal(asyncio.run(build_graph(example_fetch).ainvoke({"queries":[]}))["documents"],[])
+```
+
+**异常不会变成成功的文档**
+
+```python
+async def fail(q):
+    raise ValueError("bad source")
+expect_raises(ValueError,lambda:asyncio.run(build_graph(fail).ainvoke({"queries":["a"]})))
+```
+
+**完整场景：真实图与上下游得到预期结果**
+
+```python
+expect_equal(run_scenario(), json.loads("{\"documents\":[\"doc:a\",\"doc:b\"]}"))
+```
+
+参考资料：
+
+- [LangGraph · Use the Graph API](https://docs.langchain.com/oss/python/langgraph/use-graph-api) · 官方文档
+- [LangGraph · Streaming](https://docs.langchain.com/oss/python/langgraph/streaming) · 官方文档
+
+### w11-3 · Store 跨线程记忆与 namespace
+
+学习重点：使用 Runtime.store 与用户 namespace 保存已确认偏好，跨线程读取。
+
+#### 长期记忆的地址
+
+使用 (user_id,"preferences") namespace 与 profile 键，通过 runtime.store 读写。只写 confirmed 为真的事实，未知用户返回默认值，不把线程状态当成跨会话数据库。
+
+#### 验证作用域
+
+alice 保存中文偏好后，新图或新线程从同一 Store 读取；bob 保持默认值。未确认输入不得覆盖已确认事实，验收检查写入值与返回值。
+
+#### 从内存到持久化
+
+InMemoryStore 用于教学，长期服务选择持久化 Store。身份由认证用户确定，应用定义更正、删除和过期规则；用户隔离不能只靠调用者随意提交 ID。
+
+业务场景：用户确认的偏好需要跨会话保留。把它写到按 user_id 隔离的 Store，未确认的信息不能覆盖偏好。
+
+调用链：业务输入与真实 LangGraph 运行时 → 你实现：memory_node → 图输出、快照或事件 → 下游使用
+
+功能关系：Checkpointer 保存线程过程，Store 保存跨线程事实；生产改用持久 Store 并执行删除与更新策略。
+
+接口与要求：
+
+- namespace=(user_id, "preferences")，key="profile"。
+- confirmed 为 True 才把 {language} 写入 runtime.store。
+- 读取同一 namespace 的 profile；没有时返回 default。
+
+初始程序：
+
+```python
+# === SCENARIO: 知识库助手 ===
+# Store 跨线程记忆与 namespace
+import json
+
+# --- 已提供：业务数据与上下游组件 ---
+import asyncio
+import json
+from typing import TypedDict, Annotated, Literal
+from operator import add
+from dataclasses import dataclass
+from langgraph.graph import StateGraph, START, END, MessagesState
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command, Send, interrupt, RetryPolicy, CachePolicy
+from langgraph.runtime import Runtime
+from langgraph.store.memory import InMemoryStore
+from langgraph.cache.memory import InMemoryCache
+
+@dataclass
+class Context:
+    user_id: str
+class State(TypedDict):
+    language: str
+    confirmed: bool
+    preference: str
+def build_graph(store):
+    b=StateGraph(State,context_schema=Context)
+    b.add_node("memory",memory_node)
+    b.add_edge(START,"memory")
+    b.add_edge("memory",END)
+    return b.compile(store=store)
+
+# --- 你的任务：补全本节组件，保持函数接口 ---
+def memory_node(state: State, runtime: Runtime[Context]):
+    """按要求使用真实 LangGraph API 完成组件。"""
+    raise NotImplementedError("请完成 LangGraph 组件")
+
+# --- 已提供：完整调用流程；补全组件后可直接运行 ---
+def run_scenario():
+    store=InMemoryStore()
+    g=build_graph(store)
+    g.invoke({"language":"zh","confirmed":True},context=Context("alice"))
+    return {"alice":g.invoke({"confirmed":False},context=Context("alice"))["preference"],"bob":g.invoke({"confirmed":False},context=Context("bob"))["preference"]}
+
+if __name__ == "__main__":
+    print(json.dumps(run_scenario(), ensure_ascii=False, indent=2))
+
+```
+
+自动验收：
+
+**换一张图仍能读取同用户记忆**
+
+```python
+s=InMemoryStore()
+build_graph(s).invoke({"language":"zh","confirmed":True},context=Context("a"))
+r=build_graph(s).invoke({"confirmed":False},context=Context("a"))
+expect_equal(r["preference"],"zh")
+```
+
+**不同 namespace 不共享偏好**
+
+```python
+s=InMemoryStore()
+g=build_graph(s)
+g.invoke({"language":"en","confirmed":True},context=Context("a"))
+expect_equal(g.invoke({"confirmed":False},context=Context("b"))["preference"],"default")
+```
+
+**未确认信息不覆盖已确认记忆**
+
+```python
+s=InMemoryStore()
+g=build_graph(s)
+g.invoke({"language":"zh","confirmed":True},context=Context("a"))
+r=g.invoke({"language":"en","confirmed":False},context=Context("a"))
+expect_equal(r["preference"],"zh")
+```
+
+**完整场景：真实图与上下游得到预期结果**
+
+```python
+expect_equal(run_scenario(), json.loads("{\"alice\":\"zh\",\"bob\":\"default\"}"))
+```
+
+参考资料：
+
+- [LangGraph · Stores](https://docs.langchain.com/oss/python/langgraph/stores) · 官方文档
+- [LearnGraph · 6.2 Memory Store](https://www.learngraph.online/LearnGraph%201.X/module-6-memory-system/6.2%20Memory%20Store.html) · 中文教程
+- [LangGraph · Add memory](https://docs.langchain.com/oss/python/langgraph/add-memory) · 官方文档
+
+### w11-4 · 持久执行、task 重用与副作用边界
+
+学习重点：把中断前副作用封装为 task，验证恢复复用已经完成的任务结果。
+
+#### 定义可恢复步骤
+
+先执行 prepare_event task，再 interrupt 请求确认。使用 checkpointer 的 entrypoint，恢复时复用已完成任务结果，测试调用计数确认这一恢复路径没有重复准备。
+
+#### 稳定的恢复路径
+
+保持任务和中断次序稳定，用相同 thread_id 恢复，避免随机分支改变重放顺序。两个线程各执行自己的准备步骤；测试批准值和线程隔离。
+
+#### 仍需业务幂等
+
+任务结果复用不保证外部写入恰好一次。写入成功而结果尚未保存时崩溃，恢复可能重复写入。外部服务采用幂等键或事务，周项目演示这一故障窗口。
+
+业务场景：准备研究资料会产生一次本地事件记录，之后等待确认。恢复工作流时，已完成的准备任务不能再次执行。
+
+调用链：业务输入与真实 LangGraph 运行时 → 你实现：build_workflow → 图输出、快照或事件 → 下游使用
+
+功能关系：task 重用减少正常恢复时的重复执行；数据库写入仍要用幂等键处理提交与 checkpoint 之间的故障窗口。
+
+接口与要求：
+
+- 把 prepare(request_id) 包装为 @task。
+- @entrypoint(checkpointer=...) 内先取 task 结果，再 interrupt 请求确认。
+- 恢复后返回 {event, approved}；不要把外部副作用直接写在会重放的 entrypoint 中。
+
+初始程序：
+
+```python
+# === SCENARIO: 知识库助手 ===
+# 持久执行、task 重用与副作用边界
+import json
+
+# --- 已提供：业务数据与上下游组件 ---
+import asyncio
+import json
+from typing import TypedDict, Annotated, Literal
+from operator import add
+from dataclasses import dataclass
+from langgraph.graph import StateGraph, START, END, MessagesState
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command, Send, interrupt, RetryPolicy, CachePolicy
+from langgraph.runtime import Runtime
+from langgraph.store.memory import InMemoryStore
+from langgraph.cache.memory import InMemoryCache
+
+from langgraph.func import entrypoint, task
+
+# --- 你的任务：补全本节组件，保持函数接口 ---
+def build_workflow(checkpointer, prepare):
+    """按要求使用真实 LangGraph API 完成组件。"""
+    raise NotImplementedError("请完成 LangGraph 组件")
+
+# --- 已提供：完整调用流程；补全组件后可直接运行 ---
+def run_scenario():
+    calls=[]
+    w=build_workflow(InMemorySaver(),lambda key:calls.append(key) or "event:"+key)
+    c={"configurable":{"thread_id":"durable"}}
+    w.invoke("r1",c)
+    r=w.invoke(Command(resume=True),c)
+    return {"result":r,"calls":calls}
+
+if __name__ == "__main__":
+    print(json.dumps(run_scenario(), ensure_ascii=False, indent=2))
+
+```
+
+自动验收：
+
+**恢复时已完成 task 不重做**
+
+```python
+calls=[]
+w=build_workflow(InMemorySaver(),lambda k:calls.append(k) or k)
+c={"configurable":{"thread_id":"a"}}
+w.invoke("r1",c)
+expect_equal(w.invoke(Command(resume=True),c),{"event":"r1","approved":True})
+expect_equal(calls,["r1"])
+```
+
+**拒绝值被保留且不会重复准备**
+
+```python
+calls=[]
+w=build_workflow(InMemorySaver(),lambda k:calls.append(k) or k)
+c={"configurable":{"thread_id":"b"}}
+w.invoke("r2",c)
+expect_equal(w.invoke(Command(resume=False),c)["approved"],False)
+expect_equal(calls,["r2"])
+```
+
+**不同线程独立执行准备**
+
+```python
+calls=[]
+w=build_workflow(InMemorySaver(),lambda k:calls.append(k) or k)
+for key in ["a","b"]:
+    c={"configurable":{"thread_id":key}}
+    w.invoke(key,c)
+    w.invoke(Command(resume=True),c)
+expect_equal(calls,["a","b"])
+```
+
+**完整场景：真实图与上下游得到预期结果**
+
+```python
+expect_equal(run_scenario(), json.loads("{\"result\":{\"event\":\"event:r1\",\"approved\":true},\"calls\":[\"r1\"]}"))
+```
+
+参考资料：
+
+- [LangGraph · Functional API](https://docs.langchain.com/oss/python/langgraph/functional-api) · 官方文档
+- [LangGraph · Interrupts](https://docs.langchain.com/oss/python/langgraph/interrupts) · 官方文档
+- [LangGraph · Checkpointers](https://docs.langchain.com/oss/python/langgraph/checkpointers) · 官方文档
+
+### 本周交付：LG v0.5 · 可恢复的记忆工作流
+
+用 entrypoint/task 组织流程并加入中断。异步节点并发检索，Store 按用户隔离；用计数和故障注入验证恢复，说明外部副作用的幂等策略。
+
+- [ ] 恢复复用已完成 task 且线程独立
+- [ ] I/O 有并发上限和失败处理
+- [ ] 只写已确认事实，新线程可读且用户隔离
+
+## 第 12 周：高阶模式与工程交付
+
+将 RAG、评审、重试和缓存落到可验收项目
+
+章节：LearnGraph 7 / 13 · 官方 Workflows、Test、Application structure
+
+### w12-1 · 用图构建有证据门槛的 Agentic RAG
+
+学习重点：用真实图组织检索、改写、引用和拒答，证据不足时有界退出。
+
+#### 把质量决策放入图
+
+retrieve 更新 doc_id，路由进入 answer 或 rewrite。graphs 可改成 graph 一次，再失败则拒答。先用固定笔记验证编排，再替换成真实索引和模型。
+
+#### 引用要对应证据
+
+命中回答包含来源 ID，没有证据不能伪造编号。验收覆盖直接命中、改写命中、预算耗尽与空查询，保留原查询与改写次数方便比较收益。
+
+#### 自己的检索项目
+
+以 20 篇笔记与固定问题集替换检索模块，分别评价召回、回答和引用支持关系。加入不可信文档内容的处理，报告失败类别而不只给总成功率。
+
+业务场景：先检索，再检查证据；最多改写一次查询，没有证据就拒答。这里的检索数据固定，图控制流是真实 LangGraph。
+
+调用链：业务输入与真实 LangGraph 运行时 → 你实现：build_graph → 图输出、快照或事件 → 下游使用
+
+功能关系：在第 4 周的基础逻辑上使用真实图；生产时分别评估检索命中与答案引用支持关系。
+
+接口与要求：
+
+- retrieve 后有 docs 就 answer；无 docs 且 rewrites<1 则 rewrite，否则 refuse。
+- rewrite 返回 retrieve；answer 和 refuse 结束。
+- 回答必须使用实际检索来源，不能给无证据查询编造引用。
+
+初始程序：
+
+```python
+# === SCENARIO: 知识库助手 ===
+# 用图构建有证据门槛的 Agentic RAG
+import json
+
+# --- 已提供：业务数据与上下游组件 ---
+import asyncio
+import json
+from typing import TypedDict, Annotated, Literal
+from operator import add
+from dataclasses import dataclass
+from langgraph.graph import StateGraph, START, END, MessagesState
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command, Send, interrupt, RetryPolicy, CachePolicy
+from langgraph.runtime import Runtime
+from langgraph.store.memory import InMemoryStore
+from langgraph.cache.memory import InMemoryCache
+
+class State(TypedDict):
+    query: str
+    rewrites: int
+    docs: list[str]
+    answer: str
+def retrieve(state):
+    return {"docs":["note:graph"] if state["query"]=="graph" else []}
+def rewrite(state):
+    return {"query":"graph" if state["query"]=="graphs" else state["query"],"rewrites":state["rewrites"]+1}
+def answer(state):
+    return {"answer":"依据 "+state["docs"][0]}
+def refuse(state):
+    return {"answer":"证据不足"}
+
+# --- 你的任务：补全本节组件，保持函数接口 ---
+def build_graph():
+    """按要求使用真实 LangGraph API 完成组件。"""
+    raise NotImplementedError("请完成 LangGraph 组件")
+
+# --- 已提供：完整调用流程；补全组件后可直接运行 ---
+def run_scenario():
+    return build_graph().invoke({"query":"graphs","rewrites":0},{"recursion_limit":20})
+
+if __name__ == "__main__":
+    print(json.dumps(run_scenario(), ensure_ascii=False, indent=2))
+
+```
+
+自动验收：
+
+**已有证据不需要改写**
+
+```python
+r=build_graph().invoke({"query":"graph","rewrites":0},{"recursion_limit":20})
+expect_equal((r["answer"],r["rewrites"]),("依据 note:graph",0))
+```
+
+**一次改写补足证据**
+
+```python
+r=build_graph().invoke({"query":"graphs","rewrites":0},{"recursion_limit":20})
+expect_equal((r["answer"],r["rewrites"]),("依据 note:graph",1))
+```
+
+**无证据有明确退出**
+
+```python
+r=build_graph().invoke({"query":"unknown","rewrites":0},{"recursion_limit":20})
+expect_equal((r["answer"],r["rewrites"]),("证据不足",1))
+```
+
+**完整场景：真实图与上下游得到预期结果**
+
+```python
+expect_equal(run_scenario(), json.loads("{\"query\":\"graph\",\"rewrites\":1,\"docs\":[\"note:graph\"],\"answer\":\"依据 note:graph\"}"))
+```
+
+参考资料：
+
+- [LangGraph · Workflows & agents](https://docs.langchain.com/oss/python/langgraph/workflows-agents) · 官方文档
+- [LearnGraph · 13.1 Agentic RAG](https://www.learngraph.online/LearnGraph%201.X/module-13-agentic-rag/13.1%20Introduction.html) · 中文教程
+- [LangGraph · Use the Graph API](https://docs.langchain.com/oss/python/langgraph/use-graph-api) · 官方文档
+
+### w12-2 · Evaluator-Optimizer 有界评审循环
+
+学习重点：构建 evaluator–optimizer 图，评审修订有明确预算和失败出口。
+
+#### 反馈推动修订
+
+reviewer 返回 passed，失败时 revise 添加缺失引用再回评审。最多修订一次，仍失败输出 needs_review，不把未达标结果写成 accepted。
+
+#### 注入评审器便于测试
+
+分别使用首轮成功、第二轮成功和始终失败的 reviewer。固定实现避免模型随机性掩盖边和状态问题，保留每次评审依据与最终状态。
+
+#### 比较真实收益
+
+接入评审模型时记录 token、延迟、修订次数和质量，保留无评审基线。约束评审可改字段并处理解析失败，用可验证结果决定是否保留复杂度。
+
+业务场景：草稿由评审器检查，最多修订一次。即使第二次评审仍失败，也要进入明确的失败出口。
+
+调用链：业务输入与真实 LangGraph 运行时 → 你实现：build_graph → 图输出、快照或事件 → 下游使用
+
+功能关系：评审循环也是多 Agent 协议的一部分；上限、证据与成本都应进入验收。
+
+接口与要求：
+
+- review 节点调用传入评审器并写入 passed。
+- 不通过且 revisions<1 才 revise，然后回到 review。
+- 通过或达到上限都进入 finish，避免两个角色无限互相调用。
+
+初始程序：
+
+```python
+# === SCENARIO: 知识库助手 ===
+# Evaluator-Optimizer 有界评审循环
+import json
+
+# --- 已提供：业务数据与上下游组件 ---
+import asyncio
+import json
+from typing import TypedDict, Annotated, Literal
+from operator import add
+from dataclasses import dataclass
+from langgraph.graph import StateGraph, START, END, MessagesState
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command, Send, interrupt, RetryPolicy, CachePolicy
+from langgraph.runtime import Runtime
+from langgraph.store.memory import InMemoryStore
+from langgraph.cache.memory import InMemoryCache
+
+class State(TypedDict):
+    draft: str
+    revisions: int
+    passed: bool
+    status: str
+def revise(state):
+    return {"draft":state["draft"]+" [citation]","revisions":state["revisions"]+1}
+def finish(state):
+    return {"status":"accepted" if state["passed"] else "needs_review"}
+
+# --- 你的任务：补全本节组件，保持函数接口 ---
+def build_graph(review):
+    """按要求使用真实 LangGraph API 完成组件。"""
+    raise NotImplementedError("请完成 LangGraph 组件")
+
+# --- 已提供：完整调用流程；补全组件后可直接运行 ---
+def run_scenario():
+    return build_graph(lambda draft:"[citation]" in draft).invoke({"draft":"answer","revisions":0},{"recursion_limit":20})
+
+if __name__ == "__main__":
+    print(json.dumps(run_scenario(), ensure_ascii=False, indent=2))
+
+```
+
+自动验收：
+
+**一次修订后通过**
+
+```python
+r=build_graph(lambda d:"[citation]" in d).invoke({"draft":"x","revisions":0},{"recursion_limit":20})
+expect_equal((r["revisions"],r["status"]),(1,"accepted"))
+```
+
+**原草稿通过则不修订**
+
+```python
+r=build_graph(lambda d:True).invoke({"draft":"x","revisions":0},{"recursion_limit":20})
+expect_equal((r["draft"],r["revisions"]),("x",0))
+```
+
+**持续失败也有次数上限**
+
+```python
+calls=[]
+g=build_graph(lambda d:calls.append(d) or False)
+r=g.invoke({"draft":"x","revisions":0},{"recursion_limit":20})
+expect_equal((len(calls),r["revisions"],r["status"]),(2,1,"needs_review"))
+```
+
+**完整场景：真实图与上下游得到预期结果**
+
+```python
+expect_equal(run_scenario(), json.loads("{\"draft\":\"answer [citation]\",\"revisions\":1,\"passed\":true,\"status\":\"accepted\"}"))
+```
+
+参考资料：
+
+- [LangGraph · Workflows & agents](https://docs.langchain.com/oss/python/langgraph/workflows-agents) · 官方文档
+- [LangChain · Multi-agent](https://docs.langchain.com/oss/python/langchain/multi-agent) · 官方文档
+- [LangSmith · Evaluation](https://docs.langchain.com/langsmith/evaluation) · 官方文档
+
+### w12-3 · RetryPolicy 与按用户隔离的节点缓存
+
+学习重点：使用 RetryPolicy 与 CachePolicy，限制短暂失败重试并隔离缓存作用域。
+
+#### 只重试约定错误
+
+节点最多尝试 3 次，只重试 TimeoutError，ValueError 直接失败。测试后端前两次超时、第三次成功，精确检查次数，不吞掉实现缺陷。
+
+#### 缓存键包含结果作用域
+
+key_func 同时编码 user_id 和 query，CachePolicy 指定 TTL，compile 注入 InMemoryCache。同用户复用，不同用户重新计算，用户相关结果不能只按文本缓存。
+
+#### 三种机制不同目的
+
+缓存减少重复计算，重试处理短暂错误，checkpoint 支持恢复。为外部 I/O 加超时与幂等，观察缓存命中、陈旧结果和失败次数，再调整参数。
+
+业务场景：检索会暂时超时，重复请求又不应浪费调用。让框架执行有限重试，并为不同用户使用不同缓存键。
+
+调用链：业务输入与真实 LangGraph 运行时 → 你实现：build_graph → 图输出、快照或事件 → 下游使用
+
+功能关系：缓存键必须包含影响输出的上下文；持久化、缓存和幂等解决不同问题，不能互相替代。
+
+接口与要求：
+
+- retrieve 节点使用 RetryPolicy：最多 3 次，只重试 TimeoutError。
+- CachePolicy ttl=60；key_func 使用 user 与 query 的 JSON 字符串。
+- compile(cache=cache)，ValueError 不重试，不同用户不能命中对方缓存。
+
+初始程序：
+
+```python
+# === SCENARIO: 知识库助手 ===
+# RetryPolicy 与按用户隔离的节点缓存
+import json
+
+# --- 已提供：业务数据与上下游组件 ---
+import asyncio
+import json
+from typing import TypedDict, Annotated, Literal
+from operator import add
+from dataclasses import dataclass
+from langgraph.graph import StateGraph, START, END, MessagesState
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command, Send, interrupt, RetryPolicy, CachePolicy
+from langgraph.runtime import Runtime
+from langgraph.store.memory import InMemoryStore
+from langgraph.cache.memory import InMemoryCache
+
+class State(TypedDict):
+    user: str
+    query: str
+    answer: str
+
+# --- 你的任务：补全本节组件，保持函数接口 ---
+def build_graph(backend, cache):
+    """按要求使用真实 LangGraph API 完成组件。"""
+    raise NotImplementedError("请完成 LangGraph 组件")
+
+# --- 已提供：完整调用流程；补全组件后可直接运行 ---
+def run_scenario():
+    calls=[]
+    g=build_graph(lambda u,q:calls.append([u,q]) or u+":"+q,InMemoryCache())
+    a=g.invoke({"user":"alice","query":"graph"})
+    g.invoke({"user":"alice","query":"graph"})
+    b=g.invoke({"user":"bob","query":"graph"})
+    return {"answers":[a["answer"],b["answer"]],"backend_calls":calls}
+
+if __name__ == "__main__":
+    print(json.dumps(run_scenario(), ensure_ascii=False, indent=2))
+
+```
+
+自动验收：
+
+**暂时超时由框架重试**
+
+```python
+calls=[]
+def backend(u,q):
+    calls.append(q)
+    if len(calls)<3: raise TimeoutError("busy")
+    return "ok"
+g=build_graph(backend,InMemoryCache())
+expect_equal(g.invoke({"user":"a","query":"x"})["answer"],"ok")
+expect_equal(len(calls),3)
+```
+
+**参数错误不重试**
+
+```python
+calls=[]
+def backend(u,q):
+    calls.append(q)
+    raise ValueError("bad")
+g=build_graph(backend,InMemoryCache())
+expect_raises(ValueError,lambda:g.invoke({"user":"a","query":"x"}))
+expect_equal(len(calls),1)
+```
+
+**缓存命中与租户隔离**
+
+```python
+calls=[]
+g=build_graph(lambda u,q:calls.append(u) or u,InMemoryCache())
+g.invoke({"user":"a","query":"x"})
+g.invoke({"user":"a","query":"x"})
+expect_equal(g.invoke({"user":"b","query":"x"})["answer"],"b")
+expect_equal(calls,["a","b"])
+```
+
+**完整场景：真实图与上下游得到预期结果**
+
+```python
+expect_equal(run_scenario(), json.loads("{\"answers\":[\"alice:graph\",\"bob:graph\"],\"backend_calls\":[[\"alice\",\"graph\"],[\"bob\",\"graph\"]]}"))
+```
+
+参考资料：
+
+- [LangGraph · Use the Graph API](https://docs.langchain.com/oss/python/langgraph/use-graph-api) · 官方文档
+- [LangGraph · Test](https://docs.langchain.com/oss/python/langgraph/test) · 官方文档
+
+### w12-4 · 图回归评测与发布契约
+
+学习重点：运行固定数据集评测真实图，完成图入口、应用配置和部署验收。
+
+#### 每条样本独立执行
+
+evaluate_graph 调用真实 graph.invoke，使用 eval:<id> 区分线程，对比 expected。异常样本加入 failures 而其他样本继续；空集成功率为 0，重复 ID 在执行前拒绝。
+
+#### 组织可交付应用
+
+导出 agent.py:graph，准备依赖、langgraph.json、环境变量示例和 README。按官方本地开发文档启动服务，验证入口、线程与中断；凭据和环境要求以当前文档为准。
+
+#### 提交工程证据
+
+固定 30 条样本，报告失败分类、质量和 p95 延迟；演示两个用户、两个线程、重启恢复、审批与一次故障。检查日志和持久化配置，按部署目标选择服务方案。
+
+业务场景：发布前用固定数据集运行真实图，收集失败样本。每个评测样本使用独立 thread_id，避免记忆让测试互相污染。
+
+调用链：业务输入与真实 LangGraph 运行时 → 你实现：evaluate_graph → 图输出、快照或事件 → 下游使用
+
+功能关系：本周实战把图导出为 agent.py:graph，编写 langgraph.json、依赖锁与故障演示，再按官方本地服务文档验证部署。
+
+接口与要求：
+
+- rows 每项包含 id、input、expected；id 重复抛 ValueError。
+- 每行调用 graph.invoke(input, {configurable:{thread_id:"eval:"+id}})。
+- 异常计为该样本失败；返回 count、success_rate 和失败 id 列表，空集成功率为 0。
+
+初始程序：
+
+```python
+# === SCENARIO: 知识库助手 ===
+# 图回归评测与发布契约
+import json
+
+# --- 已提供：业务数据与上下游组件 ---
+import asyncio
+import json
+from typing import TypedDict, Annotated, Literal
+from operator import add
+from dataclasses import dataclass
+from langgraph.graph import StateGraph, START, END, MessagesState
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command, Send, interrupt, RetryPolicy, CachePolicy
+from langgraph.runtime import Runtime
+from langgraph.store.memory import InMemoryStore
+from langgraph.cache.memory import InMemoryCache
+
+class State(TypedDict):
+    query: str
+    answer: str
+def normalize(state):
+    return {"query": state["query"].strip()}
+def answer(state):
+    return {"answer": "笔记：" + state["query"]}
+def build_graph():
+    builder = StateGraph(State)
+    builder.add_node("normalize", normalize)
+    builder.add_node("answer", answer)
+    builder.add_edge(START, "normalize")
+    builder.add_edge("normalize", "answer")
+    builder.add_edge("answer", END)
+    return builder.compile()
+
+# --- 你的任务：补全本节组件，保持函数接口 ---
+def evaluate_graph(graph, rows):
+    """按要求使用真实 LangGraph API 完成组件。"""
+    raise NotImplementedError("请完成 LangGraph 组件")
+
+# --- 已提供：完整调用流程；补全组件后可直接运行 ---
+def run_scenario():
+    rows=[{"id":"good","input":{"query":" graph "},"expected":{"query":"graph","answer":"笔记：graph"}},{"id":"bad","input":{"query":"x"},"expected":{"query":"x","answer":"错误预期"}}]
+    return evaluate_graph(build_graph(),rows)
+
+if __name__ == "__main__":
+    print(json.dumps(run_scenario(), ensure_ascii=False, indent=2))
+
+```
+
+自动验收：
+
+**真实图结果与固定预期比较**
+
+```python
+g=build_graph()
+rows=[{"id":"a","input":{"query":" x "},"expected":{"query":"x","answer":"笔记：x"}}]
+expect_equal(evaluate_graph(g,rows),{"count":1,"success_rate":1,"failures":[]})
+```
+
+**异常样本不会中断整个评测**
+
+```python
+rows=[{"id":"bad","input":{},"expected":{}},{"id":"good","input":{"query":"a"},"expected":{"query":"a","answer":"笔记：a"}}]
+expect_equal(evaluate_graph(build_graph(),rows),{"count":2,"success_rate":0.5,"failures":["bad"]})
+```
+
+**空集与重复 ID 有明确约定**
+
+```python
+g=build_graph()
+expect_equal(evaluate_graph(g,[]),{"count":0,"success_rate":0,"failures":[]})
+row={"id":"x","input":{"query":"x"},"expected":{}}
+expect_raises(ValueError,lambda:evaluate_graph(g,[row,row]))
+```
+
+**完整场景：真实图与上下游得到预期结果**
+
+```python
+expect_equal(run_scenario(), json.loads("{\"count\":2,\"success_rate\":0.5,\"failures\":[\"bad\"]}"))
+```
+
+参考资料：
+
+- [LangGraph · Test](https://docs.langchain.com/oss/python/langgraph/test) · 官方文档
+- [LangSmith · Evaluation](https://docs.langchain.com/langsmith/evaluation) · 官方文档
+- [LangGraph · Application structure](https://docs.langchain.com/oss/python/langgraph/application-structure) · 官方文档
+- [LangSmith · Local development & testing](https://docs.langchain.com/langsmith/local-dev-testing) · 官方文档
+- [LangSmith · Deployment](https://docs.langchain.com/langsmith/deployment) · 官方文档
+- [LearnGraph · 7.1 Creating Deployment](https://www.learngraph.online/LearnGraph%201.X/module-7-production-deployment/7.1%20Creating%20Deployment.html) · 中文教程
+- [LangChain Academy · 官方课程源码](https://github.com/langchain-ai/langchain-academy) · 专业课程
+
+### 本周交付：LG v1.0 · 可评测与部署的 LangGraph 应用
+
+整合真实 RAG、有界评审、节点重试和用户缓存。建立固定评测集与故障分类，准备图入口、langgraph.json、锁定依赖和部署说明，按官方资料验证本地服务。
+
+- [ ] 至少 30 条样本，报告质量与 p95 延迟
+- [ ] 重试有上限，缓存作用域正确
+- [ ] 新环境可运行并展示恢复、审批与本地服务
