@@ -169,7 +169,12 @@ export function CodePractice({ lessonId, challenge, code, savedCode, completed, 
       if (editorRef.current) editorRef.current.scrollTop = code.slice(0, start).split('\n').length * 28 - 60;
     }}>定位待实现代码</button></div>
     <details className="scenario-expected"><summary>补全后运行场景，预期会看到什么？</summary><pre>{JSON.stringify(challenge.context.expected, null, 2)}</pre></details>
-    <div className="practice-editor" ref={editorContainerRef}>
+    <div className="practice-editor" ref={editorContainerRef} onKeyDown={event => {
+      if (event.key === 'Escape' && editorExpanded) {
+        event.preventDefault();
+        void toggleEditorFullscreen();
+      }
+    }}>
       <div className="practice-toolbar"><label htmlFor={'code-' + lessonId}>solution.py</label><span>{code === savedCode && savedCode ? '代码已保存' : '代码草稿'}</span><div className="practice-toolbar-actions"><button disabled={executing} onClick={() => changeCode(challenge.starter)}><RotateCcw size={14} />恢复初始代码</button><button aria-label={editorExpanded ? '收起编辑器' : '展开编辑器'} aria-pressed={editorExpanded} onClick={() => void toggleEditorFullscreen()}>{editorExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}{editorExpanded ? '收起编辑器 · Esc' : '展开编辑器'}</button></div></div>
       <textarea ref={editorRef} id={'code-' + lessonId} aria-label="Python 代码编辑器" value={code} disabled={executing} spellCheck={false} autoCapitalize="off" autoCorrect="off" wrap="off" maxLength={20000} onChange={event => changeCode(event.target.value)} onKeyDown={event => {
         if (event.key === 'Tab') {
