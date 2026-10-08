@@ -12,9 +12,9 @@
     "start": "node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js dev --config dist/server/wrangler.json --local --persist-to .wrangler/state --ip 127.0.0.1 --inspector-port 0",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "typecheck": "tsc --noEmit",
-    "check:challenges": "node scripts/check-challenges.mjs",
-    "check:langgraph": "node scripts/check-langgraph.mjs",
-    "check:fastapi": "node scripts/check-fastapi.mjs",
+    "check:challenges": "node --experimental-strip-types scripts/check-challenges.mjs",
+    "check:langgraph": "node --experimental-strip-types scripts/check-langgraph.mjs",
+    "check:fastapi": "node --experimental-strip-types scripts/check-fastapi.mjs",
     "test:e2e": "playwright test",
     "verify": "npm run lint && npm run typecheck && npm run check:challenges && npm run check:langgraph && npm run check:fastapi && npm run build && npm run test:e2e",
     "db:generate": "drizzle-kit generate"
