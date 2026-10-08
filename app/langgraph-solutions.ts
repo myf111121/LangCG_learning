@@ -1,4 +1,4 @@
-// Native LangGraph verification fixtures; never imported by the UI.
+// Verified LangGraph reference implementations shown by the learning UI.
 export const langgraphSolutions = {
   "w7-1": "def build_graph():\n    builder = StateGraph(State)\n    builder.add_node(\"normalize\", normalize)\n    builder.add_node(\"answer\", answer)\n    builder.add_edge(START, \"normalize\")\n    builder.add_edge(\"normalize\", \"answer\")\n    builder.add_edge(\"answer\", END)\n    return builder.compile()",
   "w7-2": "def build_graph():\n    b = StateGraph(State, input_schema=Input, output_schema=Output)\n    b.add_node(\"respond\", respond)\n    b.add_edge(START, \"respond\")\n    b.add_edge(\"respond\", END)\n    return b.compile()",

@@ -1,6 +1,7 @@
 import {codeChallenges} from './code-challenges.ts';
+import {fastapiPhases,fastapiQuizzes,fastapiSources} from './fastapi-course.ts';
 import {langgraphPhases,langgraphSources,langgraphQuizzes} from './langgraph-course.ts';
-export const checkedOn = '2026-10-07';
+export const checkedOn = '2026-10-08';
 const docs = 'https://docs.langchain.com/';
 export const sources = [
   {id:'learn',title:'LearnGraph · 中文实战教程',url:'https://www.learngraph.online/LearnGraph%201.X/README.html',kind:'中文教程',note:'学习模块 2–9、12–15；基础章节按需回顾。'},
@@ -26,7 +27,7 @@ export const sources = [
   {id:'learn-rag',title:'LearnGraph · 13.1 Agentic RAG',url:'https://www.learngraph.online/LearnGraph%201.X/module-13-agentic-rag/13.1%20Introduction.html',kind:'中文教程',note:'高级检索工作流的案例入口。'},
 ];
 export type Lesson={id:string;title:string;concept:string;exercise:string;checks:string[];refs:string[];tags:string[];reading?:{title:string;body:string}[]};
-export type Phase={week:number;title:string;subtitle:string;color:string;chapters:string;deliverable:string;lab:string;labChecks:string[];lessons:Lesson[];track?:'langgraph'};
+export type Phase={week:number;title:string;subtitle:string;color:string;chapters:string;deliverable:string;lab:string;labChecks:string[];lessons:Lesson[];track?:'langgraph'|'fastapi'};
 function L(id:string,title:string,concept:string,refs:string[],tags:string[]):Lesson{const challenge=codeChallenges[id];return{id,title,concept,exercise:challenge.scenario,checks:challenge.tests.map(test=>test.name),refs,tags}}
 export const phases:Phase[]=[
  {week:1,title:'可靠的单 Agent',subtitle:'把工具调用变成可控的执行流程',color:'#7565df',chapters:'LearnGraph 2.4 / 15.1',deliverable:'v0.1 · 工具与结构化输出',lab:'在一个 Python 项目中完成文档查询、结果结构化和错误反馈。对正常查询、无结果和非法参数各准备一组输入，保存 trace 与输出。',labChecks:['三个工具边界用例有明确输出','回答包含 answer、source_ids、needs_clarification','记录调用次数与一条失败 trace'],lessons:[
@@ -61,7 +62,9 @@ export const phases:Phase[]=[
  L('w6-4','项目验收与架构复盘','可复现的交付包含演示、指标和决策。用测量证据解释保留哪些架构复杂度。',['eval','deploy'],['Delivery','Retrospective'])]}
 ];
 phases.push(...langgraphPhases);
+phases.push(...fastapiPhases);
 sources.push(...langgraphSources);
+sources.push(...fastapiSources);
 export const courseWeeks=phases.length;
 export const courseTasks=phases.reduce((sum,p)=>sum+p.lessons.length,0);
 export const courseHours=courseWeeks*12;
@@ -85,6 +88,7 @@ export const quizzes=[
  {week:6,q:'流式界面最需要区分什么？',options:['仅字符颜色','中间更新、待审批与最终结果','仅 token 数'],answer:1,why:'运行状态与最终回答分开，避免误把中间更新当成结论。',ref:'stream'}
 ];
 quizzes.push(...langgraphQuizzes);
+quizzes.push(...fastapiQuizzes);
 export const approvalCode=`# Python 3.11+; pip install "langgraph==1.2.14"
 # 无需模型或 API Key；内存 checkpoint 只用于演示。
 from typing import TypedDict

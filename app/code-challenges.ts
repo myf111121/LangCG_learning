@@ -1,4 +1,5 @@
 import { challengeContexts, contextualizeCode, type ChallengeContext } from './challenge-scenarios.ts';
+import { fastapiChallenges } from './fastapi-challenges.ts';
 import { langgraphChallenges } from './langgraph-challenges.ts';
 
 export type CodeTest = { name: string; code: string };
@@ -7,9 +8,10 @@ export type CodeChallenge = {
   scenario: string;
   requirements: string[];
   starter: string;
+  solution?: string;
   tests: CodeTest[];
   context: ChallengeContext;
-  runtime?: 'langgraph';
+  runtime?: 'langgraph' | 'fastapi';
 };
 
 const test = (name: string, code: string): CodeTest => ({ name, code });
@@ -295,4 +297,4 @@ export const codeChallenges: Record<string, CodeChallenge> = { ...Object.fromEnt
         `expect_equal(run_scenario(), json.loads(${JSON.stringify(JSON.stringify(context.expected))}))`)],
     }];
   }),
-), ...langgraphChallenges };
+), ...langgraphChallenges, ...fastapiChallenges };
