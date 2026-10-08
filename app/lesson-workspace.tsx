@@ -34,12 +34,13 @@ export function LessonWorkspace({ lesson, tab, onTabChange, view, week, complete
   const phase = phases[courseWeek - 1];
   const backHref = workspaceHref(view, week);
   const backLabel = view === 'roadmap' ? '返回学习路线' : view === 'notes' ? '返回学习笔记' : '返回学习工作台';
+  const isReferenceCode = !!codeChallenges[lesson.id].runtime;
 
   return <div className={'learning-page' + (tab === 'practice' ? ' is-code-practice' : '')}>
     <header className="learning-topbar"><a className="learning-brand" href={backHref}><Network size={22} /><span>GRAPH STUDY</span></a><a className="outline-button" href={backHref}>{backLabel}</a></header>
     <main className="learning-main">
       <nav className="learning-breadcrumb" aria-label="学习位置"><a href={workspaceHref('roadmap', courseWeek)}>第 {courseWeek} 周 · {phase.title}</a><span>/</span><span>任务 {lesson.id.slice(-1)}</span></nav>
-      <div className="learning-heading"><div><span className="small-eyebrow">TASK {String(index + 1).padStart(2, '0')} / {allLessons.length}</span><h1>{lesson.title}</h1><p>阅读约 1h，代码练习约 1h。测试全部通过后自动完成任务。</p></div><span className={'learning-status ' + (completed ? 'completed' : '')}>{completed ? <CheckCircle2 size={17} /> : <Clock size={17} />}{completed ? '已通过验收' : '学习中'}</span></div>
+      <div className="learning-heading"><div><span className="small-eyebrow">TASK {String(index + 1).padStart(2, '0')} / {allLessons.length}</span><h1>{lesson.title}</h1><p>{isReferenceCode ? '阅读约 1h，代码练习约 1h。先独立实现，再按需查看正确代码与差异。' : '阅读约 1h，代码练习约 1h。测试全部通过后自动完成任务。'}</p></div><span className={'learning-status ' + (completed ? 'completed' : '')}>{completed ? <CheckCircle2 size={17} /> : <Clock size={17} />}{completed ? isReferenceCode ? '已完成' : '已通过验收' : '学习中'}</span></div>
       {loading && <div className="sync-status" role="status"><LoaderCircle size={14} className="spin" />正在读取代码、笔记和学习记录……</div>}
       {loadError && <div className="error-banner" role="alert"><span>{loadError} 读取成功后即可保存。{loadError.includes('登录') && <a href={'/signin-with-chatgpt?return_to=' + encodeURIComponent(lessonHref(lesson.id, tab, view, week))} target="_top">登录并继续</a>}</span><button onClick={onRetry}><RotateCcw size={14} />重新读取</button></div>}
       {!loading && !loadError && <div className="sync-status"><Cloud size={14} />代码、进度与笔记保存到当前账户</div>}
@@ -47,10 +48,10 @@ export function LessonWorkspace({ lesson, tab, onTabChange, view, week, complete
         <Tabs value={tab} onValueChange={onTabChange}>
           <TabsList className="learning-tabs"><TabsTrigger value="read"><BookOpen size={16} />理解与阅读</TabsTrigger><TabsTrigger value="practice"><Code2 size={16} />代码挑战</TabsTrigger><TabsTrigger value="note">学习笔记</TabsTrigger></TabsList>
           <TabsContent value="read"><div className="learning-reading">
-            <div className="lesson-content"><h2>本次重点</h2><p>{lesson.concept}</p><div className="inline-tags">{lesson.tags.map(tag => <code key={tag}>{tag}</code>)}</div>{lesson.reading?.map(section=><section className="lesson-reading-section" key={section.title}><h3>{section.title}</h3><p>{section.body}</p></section>)}<div className="lesson-guidance">{phase.track==='langgraph'?'按本页讲解阅读官方主题，再用中文案例和专业课程巩固。练习使用真实 LangGraph 1.2.14，本地运行自动测试后将结果导回网页。':'先读对应主题，再进入代码挑战独立实现。遇到旧接口时，对照官方迁移指南。'}</div><button className="solid-button" onClick={() => onTabChange('practice')}><Code2 size={16} />进入代码挑战</button></div>
+            <div className="lesson-content"><h2>本次重点</h2><p>{lesson.concept}</p><div className="inline-tags">{lesson.tags.map(tag => <code key={tag}>{tag}</code>)}</div>{lesson.reading?.map(section=><section className="lesson-reading-section" key={section.title}><h3>{section.title}</h3><p>{section.body}</p></section>)}<div className="lesson-guidance">{phase.track==='langgraph'?'按本页讲解阅读官方主题，再用中文案例和专业课程巩固。先独立完成代码；需要时再显示经过项目测试的正确实现，并用逐行 diff 复盘差异。':phase.track==='fastapi'?'按本页讲解进入 FastAPI 官方对应章节，再独立完成真实 API 练习。需要时显示经过项目测试的正确实现，并用逐行 diff 检查请求、响应和依赖边界。':'先读对应主题，再进入代码挑战独立实现。遇到旧接口时，对照官方迁移指南。'}</div><button className="solid-button" onClick={() => onTabChange('practice')}><Code2 size={16} />进入代码挑战</button></div>
             <aside className="learning-references"><h2>阅读资料</h2>{lesson.refs.map(id => { const source = sourceById(id); return <a className="source-link" key={id} href={source.url} target="_blank" rel="noopener noreferrer"><span><small>{source.kind}</small>{source.title}</span><ExternalLink size={15} /></a>; })}</aside>
           </div></TabsContent>
-          <TabsContent value="practice"><CodePractice key={lesson.id} lessonId={lesson.id} challenge={codeChallenges[lesson.id]} code={code} savedCode={savedCode} completed={completed} canSave={canSave} onChange={onCodeChange} onSave={onSaveCode} /></TabsContent>
+          <TabsContent value="practice"><CodePractice key={lesson.id} challenge={codeChallenges[lesson.id]} code={code} savedCode={savedCode} completed={completed} canSave={canSave} onChange={onCodeChange} onSave={onSaveCode} /></TabsContent>
           <TabsContent value="note"><div className="lesson-content learning-notes">{noteEditor}</div></TabsContent>
         </Tabs>
       </section>

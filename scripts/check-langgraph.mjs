@@ -3,8 +3,8 @@ import {spawnSync} from 'node:child_process';
 import {langgraphChallenges} from '../app/langgraph-challenges.ts';
 import {contextualizeCode} from '../app/challenge-scenarios.ts';
 import {buildGradingScript,buildScenarioScript} from '../app/python-grader.ts';
-import {langgraphSolutions} from './langgraph-solutions.mjs';
-const python=process.env.CHALLENGE_PYTHON || 'python';
+import {langgraphSolutions} from '../app/langgraph-solutions.ts';
+const python=process.env.CHALLENGE_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
 function execute(script){
   const run=spawnSync(python,['-c',script+'\nprint(_grading_result)'],{encoding:'utf8',timeout:20000,env:{...process.env,PYTHONIOENCODING:'utf-8'}});
   assert.equal(run.status,0,run.stderr||String(run.error));

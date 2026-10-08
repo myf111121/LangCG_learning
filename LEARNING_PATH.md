@@ -1,10 +1,10 @@
-# LangChain 与 LangGraph：12 周完整路线
+# Agent、LangGraph 与 FastAPI：18 周完整路线
 
-Python · 每周约 12 小时 · 共 144 小时
+Python · 每周约 12 小时 · 共 216 小时
 
-主线：带审批与记忆的知识库助手。每周 4 个学习任务（阅读 4h + 编码 4h），另有项目实战 4h。
+主线：带审批与记忆的知识库助手，以及承载它的多用户 FastAPI 服务。每周 4 个学习任务（阅读 4h + 编码 4h），另有项目实战 4h。
 
-每个学习任务提供业务背景、上下游调用链、示例数据和完整 Python 程序，在“你的任务”区域补全本节组件。运行场景可观察整个流程和业务输出；运行并验收会检查接口边界与上下游集成，全部通过才完成任务，无需手动勾选。已保存的旧版函数代码会保留并放入场景模板。场景使用固定数据，无需 API Key；真实框架集成在每周项目中完成。
+每个学习任务提供业务背景、上下游调用链、示例数据和完整 Python 程序。第 1–6 周可在网页运行并自动验收；第 7–18 周先独立编写真实 LangGraph 或 FastAPI 代码，需要时再揭示经过项目测试的参考实现，用双栏 diff 复盘。场景使用固定数据，无需模型 API Key。
 
 ## 第 1 周：可靠的单 Agent
 
@@ -804,7 +804,7 @@ LearnGraph 7 / 8.1 / 15
 
 前 6 周保留原有 Agent 工程场景；以下新增 24 个真实 LangGraph API 任务、96 组验收和 6 次项目交付。每周阅读 4h、编码 4h、项目 4h。代码使用 LangGraph 1.2.14，Python 3.11+。
 
-网页可编辑、全屏与保存草稿。下载运行包后安装 requirements.txt，执行 solution.py 查看场景，执行 verify.py 生成 result.json，再导入网页验收。若在本地改代码，先导入 solution.py。任务、代码和用例版本必须匹配，全部通过后保存完成记录。无需模型 API Key。官方文档校准接口，LearnGraph、LangChain Academy 与 Hugging Face Agents Course 补充案例。
+网页先提供可编辑的 `solution.py` 草稿；学习者主动点击后才揭示经过项目测试的完整答案，并将当前代码与正确实现做双栏逐行 diff。支持只看差异、复制答案和保存完成记录。学习时无需下载运行包、安装依赖、导入验收结果或提供模型 API Key；项目维护者会用真实 LangGraph 环境校验参考实现。官方文档校准接口，LearnGraph、LangChain Academy 与 Hugging Face Agents Course 补充案例。
 
 ## 第 7 周：LangGraph 基础与图建模
 
@@ -3645,3 +3645,189 @@ expect_equal(run_scenario(), json.loads("{\"count\":2,\"success_rate\":0.5,\"fai
 - [ ] 至少 30 条样本，报告质量与 p95 延迟
 - [ ] 重试有上限，缓存作用域正确
 - [ ] 新环境可运行并展示恢复、审批与本地服务
+
+## FastAPI 后端工程：第 13–18 周
+
+以下 24 个任务以 FastAPI 官方教程、进阶指南和部署文档为主线。网页提供可编辑的真实 FastAPI 程序；学习者先独立完成，再按需揭示经过 `TestClient` / `AsyncClient` 和真实依赖验证的正确实现。当前内容校准 FastAPI 0.142.4、SQLModel 0.0.47、PyJWT 2.15.1 与 pwdlib 0.3.1，Python 3.10+。
+
+主线项目在已有知识库助手之外增加 API 层：请求与响应契约、持久化、多用户认证、异步外部调用、实时连接、测试和容器部署。每周交付都在同一服务仓库中迭代。
+
+## 第 13 周：API 契约与数据校验
+
+章节：官方 First Steps / Path Parameters / Query Parameters / Request Body / Response Model / Handling Errors
+
+交付：API v0.1 · 可文档化的笔记接口
+
+### w13-1 · 创建第一个 FastAPI 应用与路径操作
+
+创建带 title、version 和 system 标签的应用，实现 `GET /health`，并检查真实响应与 OpenAPI schema。理解 FastAPI 实例、路径操作装饰器、函数返回值和自动文档之间的关系。
+
+### w13-2 · 声明路径参数、查询参数与校验边界
+
+用 `Annotated`、`Path` 和 `Query` 声明笔记 ID、可选搜索词与分页上限。覆盖默认值、边界、错误类型和 422，确认非法请求不会进入业务逻辑。
+
+### w13-3 · 用 Pydantic 模型校验请求体
+
+拆分 `NoteCreate` 与 `NotePublic`，实现 `POST /notes` 和 201 响应。验证空标题、空正文、标签类型与默认值，观察模型如何进入 OpenAPI requestBody。
+
+### w13-4 · 约束响应模型、状态码与错误语义
+
+用 `response_model` 从内部记录过滤敏感字段；资源不存在时抛出标准 404。区分 200、201、204、404 和 422，避免以 200 空对象表达失败。
+
+本周项目验收：
+
+- [ ] `fastapi dev` 可启动，`/docs` 与 `/openapi.json` 可访问
+- [ ] 请求与响应模型不泄漏内部字段
+- [ ] 200、201、404、422 均有 API 测试
+
+参考：[First Steps](https://fastapi.tiangolo.com/tutorial/first-steps/)、[Request Body](https://fastapi.tiangolo.com/tutorial/body/)、[Response Model](https://fastapi.tiangolo.com/tutorial/response-model/)、[Handling Errors](https://fastapi.tiangolo.com/tutorial/handling-errors/)
+
+## 第 14 周：依赖注入与应用结构
+
+章节：官方 Dependencies / Dependencies with yield / Bigger Applications / Middleware / CORS
+
+交付：API v0.2 · 模块化服务骨架
+
+### w14-1 · 用 Depends 组合鉴权与分页依赖
+
+把 API Key 和分页声明成依赖树，向路径操作注入已经校验的结果。检查依赖参数进入 OpenAPI，并确保鉴权失败时仓库尚未被调用。
+
+### w14-2 · 用 yield 依赖管理资源生命周期
+
+在 `yield` 前获取请求级资源，在 `finally` 中关闭。分别测试成功和 HTTP 错误路径，理解请求作用域、异常重新抛出以及后台任务不能复用已关闭资源。
+
+### w14-3 · 用 APIRouter 拆分大型应用
+
+将 notes 与 admin 路由分模块声明，由主应用统一添加 `/api/v1` 前缀、标签和共享依赖。检查最终 OpenAPI 没有未版本化或重复路径。
+
+### w14-4 · 配置 HTTP Middleware 与 CORS
+
+用 middleware 传播 request ID，用 `CORSMiddleware` 显式允许可信 origin、方法、头和凭据。测试普通跨域请求、OPTIONS 预检与拒绝来源。
+
+本周项目验收：
+
+- [ ] 依赖成功与失败路径都能可靠清理资源
+- [ ] Router 前缀、标签与共享依赖正确
+- [ ] CORS 允许和拒绝来源均有预检测试
+
+参考：[Dependencies](https://fastapi.tiangolo.com/tutorial/dependencies/)、[Dependencies with yield](https://fastapi.tiangolo.com/tutorial/dependencies/dependencies-with-yield/)、[Bigger Applications](https://fastapi.tiangolo.com/tutorial/bigger-applications/)、[CORS](https://fastapi.tiangolo.com/tutorial/cors/)
+
+## 第 15 周：数据库与 CRUD 事务
+
+章节：官方 SQL Databases / Response Status Code / Handling Errors
+
+交付：API v0.3 · 持久化笔记服务
+
+### w15-1 · 设计 SQLModel 表模型与公开模型
+
+用共享基类拆分表模型、创建模型和公开模型。主键与唯一性属于数据库边界，输入与响应约束属于 API 边界；教程使用 `metadata.create_all`，生产交付改用迁移。
+
+### w15-2 · 用 Session 依赖实现创建与列表
+
+每个请求创建独立 Session。创建路径依次 `add`、`commit`、`refresh`，列表路径使用 `select`、显式 `order_by` 和公开响应模型。
+
+### w15-3 · 实现 PATCH 部分更新与 DELETE
+
+通过 `model_dump(exclude_unset=True)` 只更新客户端实际提交的字段。缺失资源统一 404，删除成功返回真正无响应体的 204。
+
+### w15-4 · 处理唯一约束、回滚与分页
+
+让数据库唯一约束裁决并发冲突，捕获 `IntegrityError` 后先 rollback，再映射为 409。列表使用有界 offset/limit 和稳定排序。
+
+本周项目验收：
+
+- [ ] 每个请求的 Session 独立且可靠关闭
+- [ ] PATCH、DELETE、404、409 语义正确
+- [ ] 冲突回滚后仍可查询，分页稳定且有上限
+
+参考：[SQL (Relational) Databases](https://fastapi.tiangolo.com/tutorial/sql-databases/)、[Status Codes](https://fastapi.tiangolo.com/tutorial/response-status-code/)、[Handling Errors](https://fastapi.tiangolo.com/tutorial/handling-errors/)
+
+## 第 16 周：认证与细粒度授权
+
+章节：官方 Security / OAuth2 with Password and JWT / OAuth2 Scopes
+
+交付：API v0.4 · 受保护的多用户接口
+
+### w16-1 · 提取 Bearer Token 并认证当前用户
+
+用 `OAuth2PasswordBearer` 从标准 Authorization 头获取 token，验证后注入当前用户。缺失或无效令牌统一返回带 `WWW-Authenticate: Bearer` 的 401。
+
+### w16-2 · 验证密码哈希而非保存明文
+
+用 `PasswordHash.verify` 检查保存的慢哈希。错误密码与未知用户具有相同外部结果，响应不得包含明文或哈希密码。
+
+### w16-3 · 签发并校验带过期时间的 JWT
+
+登录使用 `OAuth2PasswordRequestForm`，签发包含 `sub` 和 UTC `exp` 的 HS256 access token。解码时显式限制算法，伪造、过期和未知用户统一失败。
+
+### w16-4 · 用 OAuth2 Scopes 实现细粒度授权
+
+用 `SecurityScopes` 比较路径要求与 token scopes。分别保护读取与管理接口，并强调 scope 不等同于资源所有权，后者仍需数据库策略。
+
+本周项目验收：
+
+- [ ] 密码只保存哈希，JWT 有 `sub` 与 `exp`
+- [ ] 所有 401 返回正确 Bearer challenge
+- [ ] scope 与资源所有权分别测试
+
+参考：[Security](https://fastapi.tiangolo.com/tutorial/security/)、[OAuth2 with JWT](https://fastapi.tiangolo.com/tutorial/security/oauth2-jwt/)、[OAuth2 Scopes](https://fastapi.tiangolo.com/advanced/security/oauth2-scopes/)
+
+## 第 17 周：异步、生命周期与实时能力
+
+章节：官方 Async / Lifespan / Background Tasks / WebSockets
+
+交付：API v0.5 · 并发与实时服务
+
+### w17-1 · 在 async 路径中并发等待独立 I/O
+
+依据依赖库选择 `def` 或 `async def`，用 `asyncio.gather` 并发等待独立查询并保持输入顺序。通过活动调用峰值验证并发，而不只比较易波动的耗时。
+
+### w17-2 · 用 Lifespan 管理启动与关闭资源
+
+在 `asynccontextmanager` 的 yield 前加载共享目录，退出时关闭。资源存入 `app.state`，测试使用 `with TestClient(app)` 触发完整生命周期。
+
+### w17-3 · 用 BackgroundTasks 延后轻量工作
+
+响应 202 后执行通知等短任务。只传普通数据或业务 ID，不传请求 Session；需要跨进程重试、重计算或强交付保证时改用独立任务队列。
+
+### w17-4 · 建立 WebSocket 双向消息通道
+
+接受连接、循环接收文本、回传 JSON，并把 `WebSocketDisconnect` 作为正常断开处理。项目继续加入身份认证、连接清理、消息大小与背压限制。
+
+本周项目验收：
+
+- [ ] 并发通过峰值计数验证，并有超时和上限
+- [ ] 启动失败与关闭清理有测试
+- [ ] 后台任务不复用请求 Session，WebSocket 正常断开
+
+参考：[Concurrency and async / await](https://fastapi.tiangolo.com/async/)、[Lifespan Events](https://fastapi.tiangolo.com/advanced/events/)、[Background Tasks](https://fastapi.tiangolo.com/tutorial/background-tasks/)、[WebSockets](https://fastapi.tiangolo.com/advanced/websockets/)
+
+## 第 18 周：测试、观测与生产交付
+
+章节：官方 Testing / Async Tests / Deployment Concepts / Containers / Workers / OpenTelemetry
+
+交付：API v1.0 · 可测试与部署的生产候选
+
+### w18-1 · 用 TestClient 与 dependency_overrides 隔离测试
+
+通过真实 ASGI 请求断言状态码、JSON、响应头与副作用。将生产仓库覆盖为 Fake，并在每个测试结束后清理 `app.dependency_overrides`。
+
+### w18-2 · 用 HTTPX AsyncClient 测试异步应用
+
+用 `ASGITransport` 与 `AsyncClient` 在异步测试中发请求并继续 await 数据库。注意 AsyncClient 不自动触发 lifespan，需要显式管理应用生命周期。
+
+### w18-3 · 统一领域错误与 OpenAPI 响应契约
+
+业务层抛领域异常，应用异常处理器转换为稳定 409 envelope；decorator 的 `responses` 同时声明错误模型，让运行结果与生成客户端契约一致。
+
+### w18-4 · 区分存活、就绪与生产部署边界
+
+liveness 只判断进程是否存活，readiness 判断数据库等依赖是否可用。结合 HTTPS、自动重启、worker / 容器复制、内存、迁移前置步骤、结构化日志与 trace 设计发布方案。
+
+本周项目验收：
+
+- [ ] 依赖覆盖在每个测试后清理，异步测试显式处理 lifespan
+- [ ] 全新环境可运行迁移、测试和容器镜像
+- [ ] live/ready、HTTPS、worker、内存、观测和回滚策略有记录
+
+参考：[Testing](https://fastapi.tiangolo.com/tutorial/testing/)、[Async Tests](https://fastapi.tiangolo.com/advanced/async-tests/)、[Deployment Concepts](https://fastapi.tiangolo.com/deployment/concepts/)、[FastAPI in Containers](https://fastapi.tiangolo.com/deployment/docker/)、[OpenTelemetry](https://fastapi.tiangolo.com/advanced/opentelemetry/)

@@ -196,7 +196,7 @@ def build_release_report(rows, checks):
     return {'count': n, 'success_rate': success, 'citation_rate': citations, 'p95_latency_ms': p95, 'total_cost': sum(r['cost'] for r in rows), 'ready': n >= 30 and success >= .8 and citations >= .9 and all(checks.get(k) is True for k in ['reproducible', 'approval', 'recovery'])}`,
 };
 
-const python = process.env.CHALLENGE_PYTHON || 'python';
+const python = process.env.CHALLENGE_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
 function execute(script) {
   script += '\nprint(_grading_result)\n';
   const run = spawnSync(python, ['-c', script], { encoding: 'utf8', timeout: 10000, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });

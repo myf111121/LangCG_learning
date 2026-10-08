@@ -1,4 +1,5 @@
 import type { CodeChallenge } from './code-challenges';
+import { langgraphSolutions } from './langgraph-solutions.ts';
 import { contextualizeCode, type ChallengeContext } from './challenge-scenarios.ts';
 
 const exercises = [
@@ -983,5 +984,6 @@ export const langgraphChallenges: Record<string, CodeChallenge> = Object.fromEnt
   const context: ChallengeContext = { title: item.title, story: item.story, flow: [...item.flow], connection: item.connection, provided: item.provided, setup: item.setup, entry: item.entry, expected: item.expected };
   return [item.id, { runtime: 'langgraph', title: item.title, scenario: item.story, requirements: [...item.requirements], context,
     starter: contextualizeCode(context, item.signature + '\n    """按要求使用真实 LangGraph API 完成组件。"""\n    raise NotImplementedError("请完成 LangGraph 组件")\n'),
+    solution: contextualizeCode(context, langgraphSolutions[item.id]),
     tests: [...item.tests, {name:'完整场景：真实图与上下游得到预期结果', code: 'expect_equal(run_scenario(), json.loads(' + JSON.stringify(JSON.stringify(item.expected)) + '))'}] }];
 }));

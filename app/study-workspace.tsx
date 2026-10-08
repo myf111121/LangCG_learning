@@ -1,101 +1,173 @@
 'use client';
-import {useCallback,useEffect,useRef,useState} from 'react';
-import {BookOpen,Route,FlaskConical,Library,NotebookPen,Brain,Network,Code2,Check,Clock,ExternalLink,Copy,Download,RotateCcw,Cloud,LoaderCircle,Layers3,CheckCircle2} from 'lucide-react';
-import {SidebarProvider,Sidebar,SidebarHeader,SidebarContent,SidebarFooter,SidebarMenu,SidebarMenuItem,SidebarMenuButton,SidebarGroup,SidebarInset,SidebarTrigger,useSidebar} from '@/components/ui/sidebar';
-import {Progress} from '@/components/ui/progress';
-import {Tabs,TabsList,TabsTrigger,TabsContent} from '@/components/ui/tabs';
-import {Checkbox} from '@/components/ui/checkbox';
-import {RadioGroup,RadioGroupItem} from '@/components/ui/radio-group';
-import {Textarea} from '@/components/ui/textarea';
-import {Toaster,toast} from 'sonner';
-import {phases,allLessons,sources,sourceById,quizzes,approvalCode,courseWeeks,courseTasks,courseHours,type Lesson} from './curriculum';
-import {codeChallenges} from './code-challenges';
-import {contextualizeCode} from './challenge-scenarios';
-import {LessonWorkspace} from './lesson-workspace';
-import {lessonHref,lessonWeek,workspaceHref,type WorkspaceView,type LessonTab} from './learning-navigation';
 
-type RecordValue={completed:boolean;note:string;code:string;updatedAt?:string};
-type Records=Record<string,RecordValue>;
-const nav=[{id:'today',label:'今日学习',icon:BookOpen},{id:'roadmap',label:'学习路线',icon:Route},{id:'projects',label:'实战项目',icon:FlaskConical},{id:'quiz',label:'知识自测',icon:Brain},{id:'resources',label:'资料库',icon:Library},{id:'notes',label:'学习笔记',icon:NotebookPen}];
-function StudyNavigation({view,onNavigate}:{view:string;onNavigate:(v:string)=>void}){const{setOpenMobile}=useSidebar();return <SidebarMenu>{nav.map(n=><SidebarMenuItem key={n.id}><SidebarMenuButton isActive={view===n.id} onClick={()=>{onNavigate(n.id);setOpenMobile(false)}} className="nav-button"><n.icon/><span>{n.label}</span>{n.id==='roadmap'&&<small>{String(courseWeeks).padStart(2,'0')}</small>}</SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu>}
-function GraphPreview(){return <svg viewBox="0 0 340 174" className="graph-preview" role="img" aria-label="Agent 执行循环：输入到 Agent，Agent 调用工具，工具结果回到 Agent"><path d="M60 86H113M181 86H233M267 103V137H147V103M147 69V35H267V69" fill="none" stroke="#7e789e" strokeWidth="1.5"/><circle cx="45" cy="86" r="16" fill="#302c48" stroke="#918bb0"/><text x="45" y="91" textAnchor="middle">IN</text><rect x="111" y="64" width="72" height="44" rx="10" fill="#d4ef92"/><text x="147" y="90" textAnchor="middle" style={{fill:'#282b20',fontWeight:600}}>Agent</text><rect x="231" y="64" width="72" height="44" rx="10" fill="#38314f" stroke="#918bb0"/><text x="267" y="90" textAnchor="middle">Tools</text><text x="202" y="27" textAnchor="middle">tool call</text><text x="200" y="157" textAnchor="middle">tool result</text><circle cx="78" cy="86" r="3" fill="#d4ef92"/></svg>}
-function SourceLink({id}:{id:string}){const s=sourceById(id);return <a className="source-link" href={s.url} target="_blank" rel="noopener noreferrer"><span><small>{s.kind}</small>{s.title}</span><ExternalLink size={15}/></a>}
-function download(name:string,content:string,type='text/plain;charset=utf-8'){const url=URL.createObjectURL(new Blob([content],{type}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+import { useCallback, useEffect, useState } from 'react';
+import { Code2, Network } from 'lucide-react';
+import { Toaster } from 'sonner';
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarHeader,
+  SidebarInset,
+  SidebarProvider,
+  SidebarTrigger,
+} from '@/components/ui/sidebar';
+import { Progress } from '@/components/ui/progress';
+import { allLessons, checkedOn, courseTasks, courseWeeks, phases, sourceById, type Lesson } from './curriculum';
+import { codeChallenges } from './code-challenges';
+import { contextualizeCode } from './challenge-scenarios';
+import { LessonWorkspace } from './lesson-workspace';
+import { lessonHref, workspaceHref, type LessonTab, type WorkspaceView } from './learning-navigation';
+import { NotesView } from './workspace/notes-view';
+import { ProjectsView } from './workspace/projects-view';
+import { QuizView } from './workspace/quiz-view';
+import { ResourcesView } from './workspace/resources-view';
+import { RoadmapView } from './workspace/roadmap-view';
+import { NoteEditor, StudyNavigation, SyncStatus, navigation, nextLearningContext } from './workspace/shared';
+import { TodayView } from './workspace/today-view';
+import { useLearningRecords } from './workspace/use-learning-records';
 
-type WorkspaceProps={initialLessonId?:string;initialTab?:LessonTab;initialView?:WorkspaceView;initialWeek?:number};
-export default function StudyWorkspace({initialLessonId,initialTab='read',initialView='today',initialWeek=1}:WorkspaceProps){
- const [view,setView]=useState<string>(initialView);const [week,setWeek]=useState(initialWeek);
- const [records,setRecords]=useState<Records>({});const recordsRef=useRef(records);useEffect(()=>{recordsRef.current=records},[records]);
- const [drafts,setDrafts]=useState<Record<string,string>>({});const [loading,setLoading]=useState(true);const [loadError,setLoadError]=useState('');const [busy,setBusy]=useState(false);
- const selected=allLessons.find(l=>l.id===initialLessonId);const [sheetTab,setSheetTab]=useState<string>(initialTab);const [codeDrafts,setCodeDrafts]=useState<Record<string,string>>({});
- const [quizWeek,setQuizWeek]=useState(0);const [answers,setAnswers]=useState<Record<number,string>>({});const [submitted,setSubmitted]=useState(false);
- const [approval,setApproval]=useState<'idle'|'paused'|'approved'|'rejected'>('idle');const [sourceFilter,setSourceFilter]=useState('all');
- const [labChecks,setLabChecks]=useState<Record<string,boolean>>({});
- const load=useCallback(async()=>{try{const r=await fetch('/api/learning',{cache:'no-store'});const body=await r.json() as {error?:string;records:{item_id:string;completed:number;note:string;code:string;updated_at:string}[]};if(!r.ok)throw new Error(body.error||'读取失败');const values:Records={};for(const row of body.records){values[row.item_id]={completed:!!row.completed&&(!allLessons.some(l=>l.id===row.item_id)||!!row.code),note:row.note,code:row.code??'',updatedAt:row.updated_at}}setRecords(values)}catch(e){setLoadError(e instanceof Error?e.message:'读取失败，请重试。')}finally{setLoading(false)}},[]);
- useEffect(()=>{let active=true;void Promise.resolve().then(()=>{if(active)return load()});return()=>{active=false}},[load]);
- const save=useCallback(async(id:string,patch:Partial<RecordValue>)=>{setBusy(true);try{const r=await fetch('/api/learning',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,...patch})});const result=await r.json() as {error?:string;updated_at:string};if(!r.ok)throw new Error(result.error||'保存失败');setRecords(prev=>({...prev,[id]:{...(prev[id]??{completed:false,note:'',code:''}),...patch,updatedAt:result.updated_at}}));toast.success(patch.note!==undefined?'笔记已保存':patch.code!==undefined?(patch.completed?'代码通过，任务已完成':'代码已保存，等待验收'):'学习进度已保存');return true}catch(e){toast.error(e instanceof Error?e.message:'保存失败，请重试。');return false}finally{setBusy(false)}},[]);
- const completed=allLessons.filter(l=>records[l.id]?.completed).length;const labsDone=phases.filter(p=>records['lab-'+p.week]?.completed).length;
- const next=allLessons.find(l=>!records[l.id]?.completed)??allLessons[allLessons.length-1];const current=phases.find(p=>p.lessons.some(l=>l.id===next.id))!;const phase=phases[week-1];
- const openLesson=useCallback((l:Lesson,tab='read')=>{window.location.assign(lessonHref(l.id,tab,view,week))},[view,week]);
- function move(v:string,w?:number){setView(v);if(w)setWeek(w);window.history.replaceState(window.history.state,'',workspaceHref(v,w??week));window.scrollTo({top:0,behavior:'smooth'})}
- const canSave=!loading&&!loadError&&!busy;
- useEffect(()=>{
-  const context=(document as unknown as {modelContext?:{registerTool:(t:unknown,o:unknown)=>unknown}}).modelContext;if(!context?.registerTool)return;
-  const lifecycle=new AbortController();const tools=[
-   {name:'get_learning_progress',title:'读取学习进度',description:'读取当前账户的任务进度和下一任务；不改变进度。',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true},execute:()=>({completed:allLessons.filter(l=>recordsRef.current[l.id]?.completed).length,total:courseTasks,nextLesson:allLessons.find(l=>!recordsRef.current[l.id]?.completed)?.id??null})},
-   {name:'open_learning_task',title:'打开学习任务',description:'打开任务详情，不标记完成。',inputSchema:{type:'object',properties:{lessonId:{type:'string',enum:allLessons.map(l=>l.id)}},required:['lessonId'],additionalProperties:false},annotations:{readOnlyHint:false},execute:(input:unknown)=>{const id=(input as {lessonId?:string})?.lessonId;const l=allLessons.find(x=>x.id===id);if(!l)throw new Error('任务不存在');openLesson(l);return{id:l.id,title:l.title,completed:!!recordsRef.current[l.id]?.completed}}}
-  ];for(const t of tools){try{void Promise.resolve(context.registerTool(t,{signal:lifecycle.signal})).catch(()=>{})}catch{}}
-  return()=>lifecycle.abort();
- },[openLesson]);
- const LessonRow=({lesson,index}:{lesson:Lesson;index:number})=><a className="lesson-row" href={lessonHref(lesson.id,'read',view,week)}><span className={'lesson-number '+(records[lesson.id]?.completed?'is-done':'')}>{records[lesson.id]?.completed?<Check size={16}/>:String(index+1).padStart(2,'0')}</span><div><strong>{lesson.title}</strong><span>{lesson.tags.join(' / ')}</span></div><small><Clock size={13}/>2h</small><span className="lesson-state">{records[lesson.id]?.completed?'已完成':'学习'}</span></a>;
- const phasesGrid=<div className="phase-grid">{phases.map(p=>{const count=p.lessons.filter(l=>records[l.id]?.completed).length;return <button key={p.week} className={'phase-card '+(p.week===current.week?'current-card':'')} onClick={()=>move('roadmap',p.week)}><div className="phase-card-top"><span style={{color:p.color}}>W{String(p.week).padStart(2,'0')}</span><span>{p.track==='langgraph'?'LangGraph · ':'Agent · '}4 任务 · 12h</span></div><h3>{p.title}</h3><p>{p.subtitle}</p><div className="phase-card-bottom"><span>{count} / 4 完成</span><span className="stage-line" style={{background:p.color}}/></div><Progress value={count*25} aria-label={p.title+'进度'}/></button>})}</div>;
- const filteredQuizzes=quizzes.map((q,i)=>({...q,index:i})).filter(q=>q.week===quizWeek);const quizScore=filteredQuizzes.filter(q=>Number(answers[q.index])===q.answer).length;
- const noteText=(id:string)=>drafts[id]??records[id]?.note??'';
- const noteEditor=(id:string,label:string)=><div className="note-editor"><label htmlFor={'note-'+id}>{label}</label><Textarea id={'note-'+id} value={noteText(id)} maxLength={20000} onChange={e=>setDrafts(prev=>({...prev,[id]:e.target.value}))} placeholder="记录理解、失败原因、实验结果与下一次要验证的假设……"/><div className="note-actions"><span>{noteText(id).length} / 20,000 · {noteText(id)!==(records[id]?.note??'')?'有未保存的修改':records[id]?.updatedAt?'已保存':'尚未记录'}</span><button className="solid-button" disabled={!canSave||noteText(id)===(records[id]?.note??'')} onClick={()=>void save(id,{note:noteText(id)})}>{busy?<LoaderCircle size={15} className="spin"/>:<Cloud size={15}/>}保存笔记</button></div></div>;
- function changeLessonTab(tab:string){setSheetTab(tab);const url=new URL(window.location.href);if(tab==='read')url.searchParams.delete('tab');else url.searchParams.set('tab',tab);window.history.replaceState(window.history.state,'',url)}
- if(selected){
-  const challenge=codeChallenges[selected.id];
-  const savedCode=records[selected.id]?.code;
-  const code=codeDrafts[selected.id]??(savedCode?contextualizeCode(challenge.context,savedCode):challenge.starter);
-  return <><Toaster richColors position="bottom-right"/><LessonWorkspace lesson={selected} tab={sheetTab} onTabChange={changeLessonTab} view={view} week={week} completed={!!records[selected.id]?.completed} loading={loading} loadError={loadError} onRetry={()=>{setLoading(true);setLoadError('');void load()}} code={code} savedCode={savedCode?contextualizeCode(challenge.context,savedCode):''} canSave={canSave} onCodeChange={code=>setCodeDrafts(prev=>({...prev,[selected.id]:code}))} onSaveCode={(code,passed)=>save(selected.id,{code,completed:passed})} noteEditor={noteEditor(selected.id,'理解与实验结果')}/></>;
- }
- return <SidebarProvider><Toaster richColors position="bottom-right"/><Sidebar className="study-sidebar"><SidebarHeader><div className="brand"><span className="brand-icon"><Network size={23}/></span><div>GRAPH<span>STUDY / 学习工作台</span></div></div></SidebarHeader><SidebarContent><SidebarGroup><p className="nav-caption">我的学习空间</p><StudyNavigation view={view} onNavigate={move}/></SidebarGroup></SidebarContent><SidebarFooter><div className="sidebar-plan"><span>你的学习计划</span><strong>Python 进阶路线</strong><p>{courseWeeks} 周 · 每周 12 小时</p><Progress value={completed/courseTasks*100} aria-label="总学习进度"/><small>{completed} / {courseTasks} 任务已完成</small></div><div className="profile"><span>学</span><div>持续学习者<small>LangChain & LangGraph</small></div></div></SidebarFooter></Sidebar><SidebarInset><header className="topbar"><div className="breadcrumb"><SidebarTrigger aria-label="展开或收起导航"/><span>我的工作台</span><span className="slash">/</span><strong>{nav.find(n=>n.id===view)?.label}</strong></div><span className="edition">LANGCHAIN + LANGGRAPH <span>1.x</span></span></header><main className="workspace">
- <div className="page-heading"><div><p className="eyebrow">LEARN. BUILD. ITERATE.</p><h1>{{today:'把知识，变成可用的 Agent。',roadmap:'每一步，都有可运行的成果。',projects:'让每一阶段，都能通过验收。',quiz:'用问题，检查真正的理解。',resources:'按任务阅读，按官方接口实践。',notes:'把实验结果，留给下一次自己。'}[view]}</h1><p>{view==='today'?'前 6 周建立 Agent 工程基础，后 6 周完成真实 LangGraph 的基础到高阶实战。':view==='roadmap'?'每周 4 次学习任务 + 1 次实战验收。12 小时只是起点，节奏可以自行调整。':view==='projects'?'每周在同一个 Python 仓库中迭代，用可运行的结果验收。':view==='quiz'?'先做基础校准，再逐周检查概念与工程决策。':view==='resources'?'中文教程帮助理解，官方文档校准接口。资料核对于 2026-10-07。':'记录自己的判断、失败和改进，而不只是复制代码。'}</p></div><span className="plan-chip"><Code2 size={15}/> Python · 每周 12h</span></div>
- {loading&&<div className="sync-status" role="status"><LoaderCircle size={14} className="spin"/>正在读取账户学习记录……</div>}
- {loadError&&<div className="error-banner" role="alert"><span>{loadError} 页面仍可阅读，读取成功后即可保存。{loadError.includes("登录")&&<a href="/signin-with-chatgpt?return_to=%2F" target="_top">登录并继续</a>}</span><button onClick={()=>{setLoading(true);setLoadError('');void load()}}><RotateCcw size={14}/>重新读取</button></div>}
- {!loading&&!loadError&&<div className="sync-status"><Cloud size={14}/>进度与笔记保存到当前账户</div>}
- {view==='today'&&<>
- <section className="langgraph-intro"><div><span className="small-eyebrow">NEW TRACK / W07–W12</span><h2>LangGraph · 从第一个图到工程交付</h2><p>24 个真实 API 任务 · 基础与高阶 · 本地自动验收 · 官方、中文与专业资料</p></div><button className="solid-button" onClick={()=>move('roadmap',7)}>进入 LangGraph 路线</button></section>
- <div className="stats"><div><span>学习进度</span><strong>{loading?'—':completed}<small> / {courseTasks} 任务</small></strong><Progress value={completed/courseTasks*100} aria-label="学习任务完成百分比"/></div><div><span>实战里程碑</span><strong>{loading?'—':labsDone}<small> / {courseWeeks} 项目版本</small></strong><p>每周交付一次可验收的迭代</p></div><div><span>预计总投入</span><strong>{courseHours}<small> 小时</small></strong><p>阅读 {courseWeeks*4}h · 编码 {courseWeeks*4}h · 实战 {courseWeeks*4}h</p></div></div>
- <section className="focus-card"><div className="focus-content"><span className="focus-label">{completed===courseTasks?'已完成路线':'当前阶段'} <span>WEEK {String(current.week).padStart(2,'0')}</span></span><h2>{current.title}</h2><p>{completed===courseTasks?`${courseTasks} 个任务已完成。继续完成项目验收，复盘失败样本与下一步改进。`:current.subtitle+'。'}</p><div className="focus-tags">{next.tags.map(t=><span key={t}>{t}</span>)}</div><a className="primary-button" href={lessonHref(next.id,'read',view,week)}><BookOpen size={17}/>{completed===courseTasks?'回顾最后任务':'开始本次学习'}</a></div><div className="focus-graph"><GraphPreview/><span>从一个可控的循环开始</span></div></section>
- <div className="today-columns"><section className="surface"><div className="panel-title"><h2>本周学习任务</h2><span>W{String(current.week).padStart(2,'0')} · 8h</span></div>{current.lessons.map((l,i)=><LessonRow key={l.id} lesson={l} index={i}/>)}</section><section className="surface weekly-delivery"><span className="small-eyebrow">THIS WEEK / 实战 4h</span><FlaskConical size={25}/><h3>{current.deliverable}</h3><p>{current.lab}</p><button className="outline-button" onClick={()=>move('projects',current.week)}>查看本周验收</button></section></div>
- <div className="calibration"><Brain size={20}/><div><strong>已经学过基础？用 3 个问题校准一下。</strong><p>确认工具循环与图状态的理解，再开始进阶任务。</p></div><button className="text-button" onClick={()=>{setQuizWeek(0);move('quiz')}}>基础校准</button></div>
- <section className="section-heading"><div><h2>十二周学习路线</h2><p>W01–06 · Agent 工程；W07–12 · 真实 LangGraph 从基础到高阶。</p></div><button className="text-button" onClick={()=>move('roadmap',current.week)}>查看完整路线</button></section>{phasesGrid}
- </>}
- {view==='roadmap'&&<>
- <div className="route-tracks"><button className={week<=6?'active':''} onClick={()=>move('roadmap',1)}>W01–06 · Agent 工程</button><button className={week>=7?'active':''} onClick={()=>move('roadmap',7)}>W07–12 · LangGraph 基础与高阶</button><span>{week>=7?'真实 API · 本地运行与自动验收':'标准库场景 · 网页运行与自动验收'}</span></div>
- <div className="route-strip">{phases.map(p=><button key={p.week} className={week===p.week?'selected':''} onClick={()=>move('roadmap',p.week)}><span>W{String(p.week).padStart(2,'0')}</span><strong>{p.title}</strong>{p.lessons.filter(l=>records[l.id]?.completed).length===4&&<CheckCircle2 size={16}/>}</button>)}</div>
- <section className="surface phase-details"><div className="phase-details-heading"><div><span className="small-eyebrow" style={{color:phase.color}}>WEEK {String(week).padStart(2,'0')}</span><h2>{phase.title}</h2><p>{phase.subtitle}</p></div><span className="plan-chip"><Clock size={15}/>阅读 4h + 编码 4h + 实战 4h</span></div><div className="chapter-note"><BookOpen size={16}/><span>{phase.chapters} · 每个任务：阅读约 1h，编码约 1h</span><a href={sourceById('learn').url} target="_blank" rel="noopener noreferrer">查看目录<ExternalLink size={13}/></a></div>{phase.lessons.map((l,i)=><LessonRow key={l.id} lesson={l} index={i}/>)}<div className="milestone"><Layers3 size={23}/><div><small>本周交付</small><strong>{phase.deliverable}</strong></div><button className="solid-button" onClick={()=>move('projects',week)}>开始实战验收</button></div></section>
- <div className="reading-tip"><strong>建议的学习方法</strong><p>先读官方文档，再读中文案例；进入代码挑战独立实现，用自动测试检查正常路径和边界情况。第 1–6 周用标准库验证关键行为，第 7–12 周直接使用真实 LangGraph API。本地运行包提供相同验收用例，导入结果后保存完成进度；旧教程接口对照官方文档。</p><SourceLink id="migrate"/></div>
- </>}
- {view==='projects'&&<>
- <div className="project-banner"><FlaskConical size={28}/><div><span className="small-eyebrow">CAPSTONE / 主线项目</span><h2>带审批与记忆的知识库助手</h2><p>查询笔记、引用证据、审批写入、记住偏好，并用评测验证迭代。</p></div><span>v0.1 — v1.0</span></div>
- <Tabs value={String(week)} onValueChange={v=>move('projects',Number(v))}><TabsList className="week-tabs">{phases.map(p=><TabsTrigger key={p.week} value={String(p.week)}>第 {p.week} 周</TabsTrigger>)}</TabsList>{phases.map(p=><TabsContent key={p.week} value={String(p.week)}><section className="surface lab-panel"><div className="panel-title"><h2>{p.deliverable}</h2><span>建议 4h</span></div><p className="body-copy">{p.lab}</p><h3 className="minor-heading">交付验收</h3><div className="checklist">{p.labChecks.map((c,i)=><label key={c}><Checkbox checked={labChecks['lab-'+p.week+'-'+i]??!!records['lab-'+p.week]?.completed} onCheckedChange={v=>setLabChecks(prev=>({...prev,['lab-'+p.week+'-'+i]:v===true}))}/><span>{c}</span></label>)}</div><div className="lab-actions"><p>勾选代表你已在自己的项目中验证，并保留了结果。</p><button className="solid-button" disabled={!canSave||(!records['lab-'+p.week]?.completed&&!p.labChecks.every((_,i)=>labChecks['lab-'+p.week+'-'+i]))} onClick={()=>void save('lab-'+p.week,{completed:!records['lab-'+p.week]?.completed})}><Check size={15}/>{records['lab-'+p.week]?.completed?'重新打开验收':'完成本周验收'}</button></div>{noteEditor('lab-'+p.week,'项目实验记录')}</section></TabsContent>)}</Tabs>
- <section className="surface demo-panel"><div className="panel-title"><div><span className="small-eyebrow">CONCEPT LAB / 第 3 周</span><h2>人工审批，亲自走一遍</h2></div><span className="demo-tag">交互示意</span></div><p className="body-copy">下方模拟“准备 → 暂停 → 批准或拒绝”的状态变化。实际 LangGraph 执行请下载 Python 示例。</p><div className="flow-diagram"><span className={approval==='idle'?'active':''}><Code2 size={17}/>准备草稿</span><i/><span className={approval==='paused'?'active':''}><Brain size={17}/>等待审批</span><i/><span className={approval==='approved'||approval==='rejected'?'active':''}><Check size={17}/>{approval==='rejected'?'拒绝，结束':'批准，结束'}</span></div><div className="demo-state" aria-live="polite"><code>{approval==='idle'?'state = { draft: "保存一条知识" }':approval==='paused'?'__interrupt__ = { draft: "保存一条知识" }':approval==='approved'?'Command(resume=True) → result: 已批准':'Command(resume=False) → result: 已拒绝'}</code></div><div className="demo-actions">{approval==='idle'?<button className="solid-button" onClick={()=>setApproval('paused')}>执行到审批节点</button>:approval==='paused'?<><button className="solid-button" onClick={()=>setApproval('approved')}>批准并恢复</button><button className="outline-button" onClick={()=>setApproval('rejected')}>拒绝并结束</button></>:<button className="outline-button" onClick={()=>setApproval('idle')}><RotateCcw size={15}/>重新实验</button>}</div><details className="code-details"><summary>查看可运行的 Python 示例</summary><div className="code-toolbar"><span>approval_demo.py · 无需 API Key</span><button onClick={()=>{void navigator.clipboard.writeText(approvalCode).then(()=>toast.success('代码已复制')).catch(()=>toast.error('复制失败，请下载代码。'))}}><Copy size={14}/>复制</button><button onClick={()=>download('approval_demo.py',approvalCode)}><Download size={14}/>下载</button></div><pre><code>{approvalCode}</code></pre><p>内存 checkpoint 用于演示；跨进程恢复请换用持久化后端。<a href={sourceById('interrupt').url} target="_blank" rel="noopener noreferrer">查看官方说明</a></p></details></section>
- </>}
- {view==='quiz'&&<>
- <Tabs value={String(quizWeek)} onValueChange={v=>{setQuizWeek(Number(v));setSubmitted(false);setAnswers({})}}><TabsList className="week-tabs quiz-tabs">{Array.from({length:courseWeeks+1},(_,i)=><TabsTrigger key={i} value={String(i)}>{i===0?'基础校准':'第 '+i+' 周'}</TabsTrigger>)}</TabsList><div className="quiz-intro"><span className="small-eyebrow">{quizWeek===0?'FOUNDATION CHECK':phases[quizWeek-1].title}</span><span>{filteredQuizzes.length} 题 · 单选 · 提交后显示解析</span></div><div className="quiz-list">{filteredQuizzes.map((q,i)=><section key={q.index} className="surface quiz-question"><h3><span>{String(i+1).padStart(2,'0')}</span>{q.q}</h3><RadioGroup value={answers[q.index]??''} onValueChange={v=>{setAnswers(prev=>({...prev,[q.index]:v}));setSubmitted(false)}} aria-label={q.q}>{q.options.map((o,j)=><label className={'quiz-option '+(submitted&&j===q.answer?'correct':'')} key={j}><RadioGroupItem value={String(j)}/><span>{o}</span>{submitted&&j===q.answer&&<Check size={16}/>}</label>)}</RadioGroup>{submitted&&<div className={'quiz-explanation '+(Number(answers[q.index])===q.answer?'good':'review')}><strong>{Number(answers[q.index])===q.answer?'回答正确':'建议回顾'}</strong><p>{q.why}</p><a href={sourceById(q.ref).url} target="_blank" rel="noopener noreferrer">阅读相关资料<ExternalLink size={13}/></a></div>}</section>)}</div><div className="quiz-submit"><button className="solid-button" disabled={!filteredQuizzes.every(q=>answers[q.index]!==undefined)} onClick={()=>setSubmitted(true)}>提交并查看解析</button>{!submitted&&<p>请选择全部 {filteredQuizzes.length} 道题的答案。</p>}{submitted&&<div role="status"><strong>答对 {quizScore} / {filteredQuizzes.length}</strong><p>{quizScore===filteredQuizzes.length?'概念校准通过，接下来用代码验证。':'结合上方解析回顾资料，再独立解释一次。'}</p></div>}</div></Tabs>
- </>}
- {view==='resources'&&<>
- <div className="resource-warning"><BookOpen size={22}/><div><strong>先对照版本，再运行示例</strong><p>LearnGraph 用作中文理解和案例索引。当前接口以官方文档为准，尤其是 Agent 构建、middleware 和人工中断。Python 实验使用虚拟环境，并记录锁定版本。</p></div></div>
- <Tabs value={sourceFilter} onValueChange={setSourceFilter}><TabsList className="resource-tabs"><TabsTrigger value="all">全部资料 · {sources.length}</TabsTrigger><TabsTrigger value="official">官方文档</TabsTrigger><TabsTrigger value="chinese">中文教程</TabsTrigger><TabsTrigger value="professional">专业课程</TabsTrigger></TabsList><div className="resource-grid">{sources.filter(s=>sourceFilter==='all'||(sourceFilter==='chinese'?s.kind==='中文教程':sourceFilter==='professional'?s.kind==='专业课程':s.kind==='官方文档'||s.kind==='版本校准')).map(s=><a className="surface resource-card" key={s.id} href={s.url} target="_blank" rel="noopener noreferrer"><div><span className={'resource-kind '+(s.kind==='中文教程'?'chinese':'')}>{s.kind}</span><ExternalLink size={16}/></div><h3>{s.title}</h3><p>{s.note}</p><small>{new URL(s.url).hostname}</small></a>)}</div></Tabs>
- <div className="reading-tip"><strong>进阶拓展</strong><p>第 7–12 周提供完整 LangGraph 实战。完成路线后，可从 LearnGraph 的研究助手、MCP 集成和 Deep Agents 模块选择拓展分支。建议先具备状态边界、故障恢复与评测基线，再扩大工具和协作规模。</p><SourceLink id="learn"/></div>
- </>}
- {view==='notes'&&<>
- <section className="surface journal-panel"><div className="panel-title"><h2>学习复盘</h2><button className="text-button" disabled={loading||!!loadError} onClick={()=>{const content='# Graph Study 学习记录\n\n'+['journal',...allLessons.map(l=>l.id),...phases.map(p=>'lab-'+p.week)].filter(id=>noteText(id)).map(id=>'## '+(id==='journal'?'学习复盘':allLessons.find(l=>l.id===id)?.title??'第 '+id.replace('lab-','')+' 周实战')+'\n\n'+noteText(id)).join('\n\n');download('graph-study-notes.md',content)}}><Download size={15}/>导出 Markdown</button></div>{noteEditor('journal','本周最重要的三个收获')}</section>
- <section className="section-heading"><div><h2>任务与项目笔记</h2><p>在学习任务或实战页写下的笔记会显示在这里。</p></div></section><div className="saved-notes">{allLessons.filter(l=>noteText(l.id)).map(l=><a className="surface saved-note" key={l.id} href={lessonHref(l.id,'note',view,week)}><span>第 {lessonWeek(l.id)} 周 · {records[l.id]?.completed?'已完成':'进行中'}</span><h3>{l.title}</h3><p>{noteText(l.id)}</p></a>)}{phases.filter(p=>noteText('lab-'+p.week)).map(p=><button className="surface saved-note" key={p.week} onClick={()=>move('projects',p.week)}><span>第 {p.week} 周实战</span><h3>{p.deliverable}</h3><p>{noteText('lab-'+p.week)}</p></button>)}{!allLessons.some(l=>noteText(l.id))&&!phases.some(p=>noteText('lab-'+p.week))&&<div className="notes-empty"><NotebookPen size={30}/><h3>第一条记录，从一次实验开始</h3><p>打开一个学习任务，在“笔记”中写下你的理解和运行结果。</p><button className="outline-button" onClick={()=>openLesson(next,'note')}>记录当前任务</button></div>}</div>
- </>}
- <footer className="site-footer"><span>路线设计依据 <a href={sourceById('learn').url} target="_blank" rel="noopener noreferrer">LearnGraph</a> 与 <a href={sourceById('lg-overview').url} target="_blank" rel="noopener noreferrer">LangGraph 官方文档</a>，专业课程用于补充</span><span>资料核对 · 2026.10.07</span></footer>
- </main></SidebarInset>
- </SidebarProvider>
+type WorkspaceProps = {
+  initialLessonId?: string;
+  initialTab?: LessonTab;
+  initialView?: WorkspaceView;
+  initialWeek?: number;
+};
+
+const headings: Record<WorkspaceView, { title: string; description: string }> = {
+  today: { title: '把知识，变成可交付的系统。', description: '先掌握 Agent 与 LangGraph，再用 FastAPI 完成可测试、可部署的后端服务。' },
+  roadmap: { title: '每一步，都有可运行的成果。', description: '每周 4 次学习任务 + 1 次实战验收。12 小时只是起点，节奏可以自行调整。' },
+  projects: { title: '让每一阶段，都能通过验收。', description: '每周在同一个 Python 仓库中迭代，用可运行的结果验收。' },
+  quiz: { title: '用问题，检查真正的理解。', description: '先做基础校准，再逐周检查概念与工程决策。' },
+  resources: { title: '按任务阅读，按官方接口实践。', description: `官方文档校准接口，中文与专业资料补充理解。资料核对于 ${checkedOn}。` },
+  notes: { title: '把实验结果，留给下一次自己。', description: '记录自己的判断、失败和改进，而不只是复制代码。' },
+};
+
+export default function StudyWorkspace({ initialLessonId, initialTab = 'read', initialView = 'today', initialWeek = 1 }: WorkspaceProps) {
+  const [view, setView] = useState<WorkspaceView>(initialView);
+  const [week, setWeek] = useState(initialWeek);
+  const [sheetTab, setSheetTab] = useState<string>(initialTab);
+  const [codeDrafts, setCodeDrafts] = useState<Record<string, string>>({});
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  const learning = useLearningRecords();
+  const { records, recordsRef, loading, loadError, busy, canSave, retry, save } = learning;
+  const selected = allLessons.find(lesson => lesson.id === initialLessonId);
+  const completed = allLessons.filter(lesson => records[lesson.id]?.completed).length;
+  const labsDone = phases.filter(phase => records[`lab-${phase.week}`]?.completed).length;
+  const { next, current } = nextLearningContext(records);
+
+  const move = useCallback((target: WorkspaceView, targetWeek?: number) => {
+    setView(target);
+    if (targetWeek) setWeek(targetWeek);
+    window.history.replaceState(window.history.state, '', workspaceHref(target, targetWeek ?? week));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [week]);
+
+  const openLesson = useCallback((lesson: Lesson, tab = 'read') => {
+    window.location.assign(lessonHref(lesson.id, tab, view, week));
+  }, [view, week]);
+
+  useEffect(() => {
+    const context = (document as unknown as { modelContext?: { registerTool: (tool: unknown, options: unknown) => unknown } }).modelContext;
+    if (!context?.registerTool) return;
+    const lifecycle = new AbortController();
+    const tools = [
+      {
+        name: 'get_learning_progress',
+        title: '读取学习进度',
+        description: '读取当前账户的任务进度和下一任务；不改变进度。',
+        inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+        annotations: { readOnlyHint: true },
+        execute: () => ({
+          completed: allLessons.filter(lesson => recordsRef.current[lesson.id]?.completed).length,
+          total: courseTasks,
+          nextLesson: allLessons.find(lesson => !recordsRef.current[lesson.id]?.completed)?.id ?? null,
+        }),
+      },
+      {
+        name: 'open_learning_task',
+        title: '打开学习任务',
+        description: '打开任务详情，不标记完成。',
+        inputSchema: { type: 'object', properties: { lessonId: { type: 'string', enum: allLessons.map(lesson => lesson.id) } }, required: ['lessonId'], additionalProperties: false },
+        annotations: { readOnlyHint: false },
+        execute: (input: unknown) => {
+          const id = (input as { lessonId?: string })?.lessonId;
+          const lesson = allLessons.find(item => item.id === id);
+          if (!lesson) throw new Error('任务不存在');
+          openLesson(lesson);
+          return { id: lesson.id, title: lesson.title, completed: !!recordsRef.current[lesson.id]?.completed };
+        },
+      },
+    ];
+    for (const tool of tools) {
+      try {
+        void Promise.resolve(context.registerTool(tool, { signal: lifecycle.signal })).catch(() => {});
+      } catch {}
+    }
+    return () => lifecycle.abort();
+  }, [openLesson, recordsRef]);
+
+  const noteText = useCallback((id: string) => noteDrafts[id] ?? records[id]?.note ?? '', [noteDrafts, records]);
+  const noteEditor = useCallback((id: string, label: string) => <NoteEditor id={id} label={label} records={records} drafts={noteDrafts} setDrafts={setNoteDrafts} canSave={canSave} busy={busy} save={save} />, [records, noteDrafts, canSave, busy, save]);
+
+  function changeLessonTab(tab: string) {
+    setSheetTab(tab);
+    const url = new URL(window.location.href);
+    if (tab === 'read') url.searchParams.delete('tab');
+    else url.searchParams.set('tab', tab);
+    window.history.replaceState(window.history.state, '', url);
+  }
+
+  if (selected) {
+    const challenge = codeChallenges[selected.id];
+    const savedCode = records[selected.id]?.code;
+    const code = codeDrafts[selected.id] ?? (savedCode ? contextualizeCode(challenge.context, savedCode) : challenge.starter);
+    return <>
+      <Toaster richColors position="bottom-right" />
+      <LessonWorkspace
+        lesson={selected}
+        tab={sheetTab}
+        onTabChange={changeLessonTab}
+        view={view}
+        week={week}
+        completed={!!records[selected.id]?.completed}
+        loading={loading}
+        loadError={loadError}
+        onRetry={retry}
+        code={code}
+        savedCode={savedCode ? contextualizeCode(challenge.context, savedCode) : ''}
+        canSave={canSave}
+        onCodeChange={value => setCodeDrafts(previous => ({ ...previous, [selected.id]: value }))}
+        onSaveCode={(value, passed) => save(selected.id, { code: value, completed: passed })}
+        noteEditor={noteEditor(selected.id, '理解与实验结果')}
+      />
+    </>;
+  }
+
+  return <SidebarProvider>
+    <Toaster richColors position="bottom-right" />
+    <Sidebar className="study-sidebar">
+      <SidebarHeader><div className="brand"><span className="brand-icon"><Network size={23} /></span><div>GRAPH<span>STUDY / 学习工作台</span></div></div></SidebarHeader>
+      <SidebarContent><SidebarGroup><p className="nav-caption">我的学习空间</p><StudyNavigation view={view} onNavigate={move} /></SidebarGroup></SidebarContent>
+      <SidebarFooter>
+        <div className="sidebar-plan"><span>你的学习计划</span><strong>Python 进阶路线</strong><p>{courseWeeks} 周 · 每周 12 小时</p><Progress value={completed / courseTasks * 100} aria-label="总学习进度" /><small>{completed} / {courseTasks} 任务已完成</small></div>
+        <div className="profile"><span>学</span><div>持续学习者<small>Agent · LangGraph · FastAPI</small></div></div>
+      </SidebarFooter>
+    </Sidebar>
+    <SidebarInset>
+      <header className="topbar"><div className="breadcrumb"><SidebarTrigger aria-label="展开或收起导航" /><span>我的工作台</span><span className="slash">/</span><strong>{navigation.find(item => item.id === view)?.label}</strong></div><span className="edition">AGENT + LANGGRAPH + FASTAPI</span></header>
+      <main className="workspace">
+        <div className="page-heading"><div><p className="eyebrow">LEARN. BUILD. ITERATE.</p><h1>{headings[view].title}</h1><p>{headings[view].description}</p></div><span className="plan-chip"><Code2 size={15} /> Python · 每周 12h</span></div>
+        <SyncStatus loading={loading} loadError={loadError} retry={retry} />
+        {view === 'today' && <TodayView records={records} loading={loading} completed={completed} labsDone={labsDone} current={current} next={next} week={week} move={move} />}
+        {view === 'roadmap' && <RoadmapView records={records} week={week} move={move} />}
+        {view === 'projects' && <ProjectsView records={records} week={week} move={move} canSave={canSave} save={save} noteEditor={noteEditor} />}
+        {view === 'quiz' && <QuizView />}
+        {view === 'resources' && <ResourcesView />}
+        {view === 'notes' && <NotesView records={records} loading={loading} loadError={loadError} view={view} week={week} next={next} move={move} noteText={noteText} noteEditor={noteEditor} openLesson={openLesson} />}
+        <footer className="site-footer"><span>路线设计依据 <a href={sourceById('lg-overview').url} target="_blank" rel="noopener noreferrer">LangGraph</a> 与 <a href={sourceById('fa-tutorial').url} target="_blank" rel="noopener noreferrer">FastAPI 官方文档</a>，中文与专业课程用于补充</span><span>资料核对 · {checkedOn.replaceAll('-', '.')}</span></footer>
+      </main>
+    </SidebarInset>
+  </SidebarProvider>;
 }
